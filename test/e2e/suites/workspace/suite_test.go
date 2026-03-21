@@ -14,24 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package storage
+package workspace
 
 import (
-	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apiserver/pkg/registry/generic"
-	"k8s.io/apiserver/pkg/registry/rest"
+	"os"
+	"testing"
+
+	"github.com/onsi/ginkgo/v2"
+	"github.com/onsi/gomega"
 )
 
-// Storage bundles the phase-1 root resources served by the workspace API group.
-type Storage struct {
-	Workspaces     rest.Storage
-	PlacementViews rest.Storage
+func TestWorkspaceE2E(t *testing.T) {
+	gomega.RegisterFailHandler(ginkgo.Fail)
+	ginkgo.RunSpecs(t, "Workspace E2E Suite")
 }
 
-// NewStorage returns the root storages installed for the workspace API group.
-func NewStorage(_ *runtime.Scheme, _ generic.RESTOptionsGetter) (*Storage, error) {
-	return &Storage{
-		Workspaces:     NewWorkspaceREST(nil),
-		PlacementViews: NewPlacementViewREST(),
-	}, nil
-}
+var _ = ginkgo.SynchronizedBeforeSuite(func() []byte {
+	return nil
+}, func([]byte) {
+	gomega.Expect(os.Getenv("KUBECONFIG")).ShouldNot(gomega.BeEmpty())
+})

@@ -17,6 +17,8 @@ limitations under the License.
 package storage
 
 import (
+	"context"
+	"net/http"
 	"testing"
 
 	"k8s.io/apiserver/pkg/registry/rest"
@@ -24,8 +26,14 @@ import (
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 )
 
+type fakeWorkspaceProxyHandler struct{}
+
+func (fakeWorkspaceProxyHandler) ConnectWorkspace(context.Context, string, string, rest.Responder) (http.Handler, error) {
+	return http.HandlerFunc(func(http.ResponseWriter, *http.Request) {}), nil
+}
+
 func TestWorkspaceRESTMetadata(t *testing.T) {
-	rest := NewWorkspaceREST()
+	rest := NewWorkspaceREST(nil)
 	if rest.NamespaceScoped() {
 		t.Fatal("expected cluster-scoped workspace storage")
 	}
@@ -38,12 +46,24 @@ func TestWorkspaceRESTMetadata(t *testing.T) {
 }
 
 func TestWorkspaceRESTDoesNotAdvertiseReadableVerbs(t *testing.T) {
-	storage := NewWorkspaceREST()
+	storage := NewWorkspaceREST(nil)
 
 	if _, ok := any(storage).(rest.Getter); ok {
 		t.Fatal("workspace storage must not advertise get before read support exists")
 	}
 	if _, ok := any(storage).(rest.Lister); ok {
 		t.Fatal("workspace storage must not advertise list before read support exists")
+	}
+}
+
+func TestWorkspaceRESTAdvertisesProxyConnectWhenHandlerConfigured(t *testing.T) {
+	storage := NewWorkspaceREST(fakeWorkspaceProxyHandler{})
+
+	if _, ok := any(storage).(rest.Connecter); !ok {
+		t.Fatal("workspace storage must advertise proxy connect when handler is configured")
+	}
+	methods := storage.ConnectMethods()
+	if len(methods) == 0 {
+		t.Fatal("expected proxy connect methods")
 	}
 }

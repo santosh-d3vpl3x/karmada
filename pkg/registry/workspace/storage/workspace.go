@@ -17,22 +17,38 @@ limitations under the License.
 package storage
 
 import (
+	"context"
+	"fmt"
+	"net/http"
+	"path"
+
 	"k8s.io/apimachinery/pkg/runtime"
+	genericrequest "k8s.io/apiserver/pkg/endpoints/request"
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 )
 
+var workspaceProxyConnectMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodHead, http.MethodOptions}
+
+// WorkspaceProxyHandler serves the nested workspace endpoint under the root proxy subresource.
+type WorkspaceProxyHandler interface {
+	ConnectWorkspace(context.Context, string, string, rest.Responder) (http.Handler, error)
+}
+
 // WorkspaceREST implements the root workspace resource surface.
-type WorkspaceREST struct{}
+type WorkspaceREST struct {
+	proxy WorkspaceProxyHandler
+}
 
 var _ rest.Scoper = &WorkspaceREST{}
 var _ rest.Storage = &WorkspaceREST{}
 var _ rest.SingularNameProvider = &WorkspaceREST{}
+var _ rest.Connecter = &WorkspaceREST{}
 
 // NewWorkspaceREST returns a root REST storage for workspaces.
-func NewWorkspaceREST() *WorkspaceREST {
-	return &WorkspaceREST{}
+func NewWorkspaceREST(proxy WorkspaceProxyHandler) *WorkspaceREST {
+	return &WorkspaceREST{proxy: proxy}
 }
 
 // New returns an empty Workspace object.
@@ -51,4 +67,32 @@ func (r *WorkspaceREST) Destroy() {}
 // GetSingularName returns the singular resource name for workspaces.
 func (r *WorkspaceREST) GetSingularName() string {
 	return workspacev1alpha1.ResourceSingularWorkspace
+}
+
+// ConnectMethods returns the methods handled by the workspace proxy subresource.
+func (r *WorkspaceREST) ConnectMethods() []string {
+	return workspaceProxyConnectMethods
+}
+
+// NewConnectOptions uses the nested proxy path directly, so no typed connect options are required.
+func (r *WorkspaceREST) NewConnectOptions() (runtime.Object, bool, string) {
+	return nil, true, ""
+}
+
+// Connect delegates the nested workspace endpoint to the configured proxy handler.
+func (r *WorkspaceREST) Connect(ctx context.Context, id string, _ runtime.Object, responder rest.Responder) (http.Handler, error) {
+	if r.proxy == nil {
+		return nil, NewUnsupportedResourceError("proxy")
+	}
+
+	info, ok := genericrequest.RequestInfoFrom(ctx)
+	if !ok {
+		return nil, fmt.Errorf("no RequestInfo found in the context")
+	}
+	if len(info.Parts) < 3 {
+		return nil, fmt.Errorf("invalid requestInfo parts: %v", info.Parts)
+	}
+
+	proxyPath := "/" + path.Join(info.Parts[3:]...)
+	return r.proxy.ConnectWorkspace(ctx, id, proxyPath, responder)
 }
