@@ -104,6 +104,20 @@ Do not pull cluster-scoped policy APIs, arbitrary CRDs, generic live targeting, 
 - Keep runtime projection separate from live routing. List/watch and `connect` semantics have different failure modes.
 - Treat `kubectl` compatibility as an executable phase-1 requirement and `k9s` compatibility as a documented smoke bar.
 
+## Incremental Verification Sequencing
+
+Verification is not a terminal phase in this plan. After the harnesses exist, every behavior-changing task must extend and run the smallest relevant contract or e2e slice before its commit.
+
+Sequencing rules:
+
+- Task 3 introduces the workspace apiserver contract-test harness together with bootstrap coverage;
+- Task 4 and Task 5 extend contract tests for root storage, errors, discovery, and support-matrix semantics before commit;
+- Task 6 introduces the workspace e2e helper and suite bootstrap as soon as kubeconfig generation and writable resources are usable;
+- Task 7 extends contract tests and e2e for projected pods, events, and watch behavior before commit;
+- Task 8 extends contract tests and e2e for `logs`, `exec`, `attach`, `portforward`, and ambiguity handling before commit;
+- Task 9 runs full-system verification only after the earlier incremental slices have already passed;
+- Task 10 and Task 11 are coverage-completion tasks for any remaining gaps, not the first time behavioral verification appears.
+
 ## Tasks
 
 ### Task 1: Finalize Workspace API Types And Generation
@@ -256,7 +270,7 @@ git add pkg/karmadactl/workspace/workspace.go pkg/karmadactl/workspace/kubeconfi
 git commit -m "feat: add workspace cli commands"
 ```
 
-### Task 3: Bootstrap The Workspace API Server
+### Task 3: Bootstrap The Workspace API Server And Contract Harness
 
 **Files:**
 - Create: `cmd/karmada-workspace-apiserver/main.go`
@@ -442,7 +456,7 @@ git add pkg/workspace/support/matrix.go pkg/workspace/support/matrix_test.go pkg
 git commit -m "feat: add workspace support matrix"
 ```
 
-### Task 6: Compile Writable Workspace Requests Into Main-Karmada Source Objects
+### Task 6: Compile Writable Workspace Requests Into Main-Karmada Source Objects And Introduce E2E Harness
 
 **Files:**
 - Create: `pkg/workspace/facade/metadata.go`
@@ -679,7 +693,7 @@ git add artifacts/deploy/karmada-workspace-apiserver.yaml artifacts/deploy/karma
 git commit -m "feat: wire workspace apiserver deployment"
 ```
 
-### Task 10: Add Workspace API Contract Tests
+### Task 10: Complete Remaining Workspace API Contract Coverage
 
 **Files:**
 - Create: `pkg/workspace/apiserver_contract_test.go`
@@ -748,7 +762,7 @@ git add pkg/workspace/apiserver_contract_test.go pkg/workspace/apiserver.go pkg/
 git commit -m "test: add workspace api contract coverage"
 ```
 
-### Task 11: Add Workspace E2E And Client Compatibility Suite
+### Task 11: Complete Remaining Workspace E2E And Client Compatibility Coverage
 
 **Files:**
 - Create: `test/e2e/framework/workspace.go`
