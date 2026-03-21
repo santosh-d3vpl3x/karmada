@@ -251,38 +251,48 @@ The kubeconfig generator should bind clients to the published URL rather than to
 
 ### Workspace resource shape
 
-The `Workspace` API should stay small but extensible. It should fix the tenant contract without introducing a large policy matrix too early.
+The `Workspace` API should stay small and Karmada-aware. In phase 1, the public schema should match the current workspace API shape rather than introducing extra contract fields too early.
 
-Recommended structure:
+Phase-1 `WorkspaceSpec` fields:
 
-- `spec.clusterSelector`: identifies the member clusters that may back the workspace;
-- `spec.namespacePolicy`: controls which namespaces exist in the workspace view;
-- `spec.liveAccess`: enables bounded live subresources such as `logs`, `exec`, `attach`, and `port-forward`;
-- `spec.placementVisibility`: controls whether placement is hidden, summarized, or exposed through secondary surfaces;
-- `spec.apiProfile`: declares the supported API envelope for the workspace;
-- `status.url`: publishes the canonical endpoint;
-- `status.phase`: exposes high-level readiness;
-- `status.conditions`: publishes detailed readiness and degradation state;
-- `status.observedGeneration`: tracks controller convergence;
-- `status.resolvedClusters`: publishes the currently selected cluster set for debugging and administration;
-- `status.effectiveAPIProfile`: publishes the realized profile after admission or defaulting.
+- `spec.clusterSelector`: selects the member clusters that may back the workspace;
+- `spec.namespacePolicy`: defines how workspace namespaces map into backing-cluster namespaces;
+- `spec.placementVisibility`: controls how much placement detail secondary surfaces expose;
+- `spec.liveAccess`: enables or disables bounded live subresources.
+
+Phase-1 `WorkspaceStatus` fields:
+
+- `status.conditions`
+- `status.url`
+
+This keeps the API lean and avoids committing to fields such as `apiProfile`, `resolvedClusters`, or `effectiveAPIProfile` before they are truly needed in the public contract.
 
 ### API profiles
 
-Phased scope should be explicit in the API, not only in documents.
+Phased scope still needs to stay explicit, but phase 1 should express that through truthful discovery and release documentation rather than a new `WorkspaceSpec` field.
 
-The design should use coarse profiles such as `workload-v1` rather than per-resource toggle sprawl. Discovery remains truthful at runtime, but `spec.apiProfile` makes the intended support envelope visible and auditable.
+Choice made:
+
+- phase-1 scope is defined by the workspace apiserver implementation and what it advertises in discovery;
+- `workload-v1` remains a useful design label, but it is not a persisted `Workspace` field in phase 1;
+- if later phases need per-workspace API envelopes, that should be added deliberately as a schema evolution, not assumed now.
 
 ### Namespace model
 
-Namespaces are first-class logical Kubernetes objects in the workspace.
+Namespaces are first-class logical Kubernetes objects in the workspace, but the `NamespacePolicy` type must describe Karmada-relevant mapping semantics, not just visibility semantics.
 
-In phase 1:
+Phase-1 namespace policy modes:
 
-- namespace names remain stable and are never cluster-qualified;
+- `Shared`: the logical workspace namespace maps to the same namespace name in backing clusters;
+- `Prefixed`: the logical workspace namespace maps to a derived prefixed namespace name in backing clusters;
+- `Dedicated`: the workspace gets dedicated backing namespaces managed for isolation.
+
+Rules:
+
+- user-facing namespace names remain stable and never include cluster identity;
 - namespace CRUD is served by the workspace API;
-- backing-cluster namespace realization may remain asynchronous and partial;
-- namespace readiness or propagation state should be reflected through normal status and conditions.
+- backing namespace realization remains asynchronous;
+- namespace mapping mode is an implementation detail chosen by policy, not exposed in normal namespace names.
 
 ### Object identity
 
@@ -291,18 +301,19 @@ The object identity model should preserve Kubernetes intuition while handling mu
 Rules:
 
 - Karmada-authoritative logical resources keep normal Kubernetes names;
-- logical UIDs come from workspace or Karmada state, not from backing-cluster copy identity;
-- runtime objects such as pods should keep their familiar names when those names are unique in the workspace view;
-- if collisions occur, the workspace should mint a stable opaque suffix that is safe for Kubernetes names and does not encode cluster identity;
+- logical UIDs come from Karmada-owned source objects, not from backing-cluster copy identity;
+- projected runtime objects such as pods use deterministic workspace names for the lifetime of a backing runtime object;
+- when pod-name collisions occur, the workspace appends a stable opaque suffix to the familiar base name;
+- the same logical pod identity must be used consistently across reads, watches, events, status, debug views, and live-target resolution;
 - backing-cluster names must not appear in primary user-facing object names.
 
 ### Resource version and watch model
 
 Supported resources require workspace-scoped logical `resourceVersion` values and workspace-native watch semantics.
 
-The design should not expose ad hoc merged per-cluster resourceVersion tokens as the long-term contract. Instead, the workspace layer should allocate and serve logical versions from its own index and event pipeline.
+The design should not expose merged per-cluster resourceVersion tokens as the public contract. Instead, the workspace layer allocates and serves logical versions from its own index and event pipeline.
 
-If a resource cannot yet satisfy that level of semantics, it should not be advertised as supported in that phase.
+If a resource cannot satisfy that level of semantics yet, it should not be advertised as supported in that phase.
 
 ### Placement and debug model
 
@@ -344,7 +355,6 @@ Phase 1 should keep the data model intentionally bounded:
 
 Later phases should extend this boundary explicitly rather than changing the meaning of phase-1 contracts.
 
-
 ### Phase-1 concrete schema
 
 Phase 1 should lock the `Workspace` schema tightly enough that clients and controllers do not need to guess defaults.
@@ -353,46 +363,40 @@ Recommended concrete shape:
 
 ```go
 type WorkspaceSpec struct {
-    ClusterSelector policyv1alpha1.ClusterAffinity `json:"clusterSelector"`
-    NamespacePolicy NamespacePolicy                `json:"namespacePolicy,omitempty"`
-    LiveAccess      *LiveAccessPolicy              `json:"liveAccess,omitempty"`
-    PlacementVisibility PlacementVisibility        `json:"placementVisibility,omitempty"`
-    APIProfile      APIProfile                     `json:"apiProfile,omitempty"`
+    ClusterSelector      policyv1alpha1.ClusterAffinity `json:"clusterSelector"`
+    NamespacePolicy      NamespacePolicy                `json:"namespacePolicy,omitempty"`
+    PlacementVisibility  PlacementVisibility            `json:"placementVisibility,omitempty"`
+    LiveAccess           *LiveAccessPolicy              `json:"liveAccess,omitempty"`
 }
 
 type NamespacePolicy struct {
-    Mode  NamespacePolicyMode `json:"mode,omitempty"`
-    Names []string            `json:"names,omitempty"`
+    Mode       NamespacePolicyMode `json:"mode,omitempty"`
+    Namespaces []string            `json:"namespaces,omitempty"`
 }
 
 type LiveAccessPolicy struct {
-    EnabledSubresources []string `json:"enabledSubresources,omitempty"`
+    Enabled      bool              `json:"enabled,omitempty"`
+    Subresources []LiveSubresource `json:"subresources,omitempty"`
 }
 
 type WorkspaceStatus struct {
-    URL                 string             `json:"url,omitempty"`
-    Phase               WorkspacePhase     `json:"phase,omitempty"`
-    Conditions          []metav1.Condition `json:"conditions,omitempty"`
-    ObservedGeneration  int64              `json:"observedGeneration,omitempty"`
-    ResolvedClusters    []string           `json:"resolvedClusters,omitempty"`
-    EffectiveAPIProfile APIProfile         `json:"effectiveAPIProfile,omitempty"`
+    Conditions []metav1.Condition `json:"conditions,omitempty"`
+    URL        string             `json:"url,omitempty"`
 }
 ```
 
 Phase-1 enums and defaults:
 
-- `APIProfile`: `workload-v1` only in phase 1; default `workload-v1`;
-- `NamespacePolicy.Mode`: `Dynamic` or `Fixed`; default `Dynamic`;
+- `NamespacePolicyMode`: `Shared`, `Prefixed`, or `Dedicated`;
 - `PlacementVisibility`: `Hidden`, `Summary`, or `Debug`; default `Summary`;
-- `WorkspacePhase`: `Pending`, `Ready`, or `Degraded`.
+- `LiveSubresource`: `logs`, `exec`, `attach`, `portforward`, and future-only values such as `proxy` if explicitly enabled later.
 
-If `NamespacePolicy.Mode` is `Fixed`, `Names` must be non-empty. If `Dynamic`, namespace CRUD through the workspace API is allowed subject to RBAC and profile support.
+If `LiveAccess` is omitted, live access is disabled by default. If `LiveAccess.Enabled` is true and `Subresources` is empty, phase 1 should enable the standard supported set: `logs`, `exec`, `attach`, and `portforward`.
 
 Phase-1 condition types should be:
 
 - `Resolved`
 - `EndpointPublished`
-- `APIProfileApplied`
 - `IndexReady`
 
 ### Phase-1 resource support matrix
@@ -403,14 +407,14 @@ The phase-1 profile must be explicit about what is writable, projected, and unsu
 | --- | --- | --- | --- | --- |
 | `namespaces` | yes | yes | none | logical workspace namespace object |
 | `configmaps` | yes | yes | none | desired-state resource |
-| `secrets` | yes | yes | none | desired-state resource; same workspace auth model as other resources |
+| `secrets` | yes | yes | none | desired-state resource |
 | `services` | yes | yes | none | desired-state resource |
 | `deployments` | yes | yes | none | desired-state resource |
 | `statefulsets` | yes | yes | none | desired-state resource |
 | `daemonsets` | yes | yes | none | desired-state resource |
 | `jobs` | yes | yes | none | desired-state resource |
 | `cronjobs` | yes | yes | none | desired-state resource |
-| `pods` | yes | no | `log`, `exec`, `attach`, `portforward` | runtime projection only |
+| `pods` | yes | no | `logs`, `exec`, `attach`, `portforward` | runtime projection only |
 | `events` | yes | no | none | runtime projection only |
 
 Phase-1 explicit non-goals for writes:
@@ -424,10 +428,15 @@ Phase-1 explicit non-goals for writes:
 
 The workspace API must translate supported writes into Karmada-native desired state rather than inventing a separate propagation model.
 
+Explicit compilation target:
+
+- the canonical stored desired-state object is the ordinary native source object persisted by the main Karmada apiserver;
+- the workspace apiserver is a tenant-facing facade over that Karmada-owned source state, not a second persistence system;
+- Karmada-native propagation machinery remains responsible for producing bindings and work toward member clusters.
+
 Phase-1 rules:
 
-- a write to a supported desired-state resource creates or updates the logical source object in Karmada-owned storage;
-- Karmada-native propagation machinery remains responsible for producing bindings and work toward member clusters;
+- a write to a supported desired-state resource creates or updates the corresponding source object in the main Karmada apiserver;
 - workspace-visible status is then projected back from existing Karmada state and runtime observations;
 - runtime projected resources such as pods and events are never the primary write target;
 - deletion follows the same rule: delete the logical workspace object first, then let Karmada propagation and cleanup converge underneath it.
@@ -438,7 +447,7 @@ This means phase 1 should only expose writable resources whose semantics map cle
 
 Phase 1 should make the following guarantees for supported resources:
 
-- discovery only advertises resources and subresources that are actually supported in the workspace's effective API profile;
+- discovery only advertises resources and subresources that are actually supported by the workspace apiserver;
 - supported resources have workspace-scoped `resourceVersion` values;
 - `get`, `list`, and `watch` semantics are defined at workspace scope, not as raw pass-through aggregation;
 - optimistic concurrency for writable logical resources is based on workspace-visible metadata and `resourceVersion`;
@@ -451,7 +460,7 @@ The workspace API should use a small, explicit error model.
 
 Phase-1 rules:
 
-- resource or subresource not in the effective profile: `404 NotFound`;
+- resource or subresource not supported by the workspace apiserver: `404 NotFound`;
 - discovered resource with unsupported verb in phase 1: `405 MethodNotAllowed`;
 - workspace RBAC denial: `403 Forbidden`;
 - backing-cluster live-action RBAC denial: `403 Forbidden` with a distinct workspace error reason indicating backing-cluster denial;
@@ -480,7 +489,7 @@ The design should be explicit about what is tenant-facing and what remains opera
 Tenant-facing contract:
 
 - workspace endpoint and generated kubeconfig;
-- workspace-scoped discovery for the effective profile;
+- workspace-scoped discovery for supported phase-1 resources;
 - supported logical resources;
 - projected runtime resources;
 - read-only placement or debug views when allowed by RBAC.
@@ -503,7 +512,7 @@ Responsibilities:
 
 - authentication using existing Karmada front-door auth;
 - workspace authorization;
-- logical REST storage;
+- tenant-facing REST facade over main Karmada apiserver storage;
 - discovery for enabled resources;
 - workspace-scoped watch streams;
 - live subresource routing.
@@ -545,7 +554,7 @@ The control plane must be able to resolve `Workspace.spec` into effective runtim
 That includes:
 
 - selected backing clusters;
-- effective API profile and discovery exposure;
+- supported phase-1 surface and discovery exposure;
 - published endpoint state in `status.url`;
 - readiness and degradation conditions.
 
@@ -553,7 +562,7 @@ Whether this is implemented by one controller or several is an implementation ch
 
 ### Logical object storage capability
 
-The workspace API must persist logical object state in Karmada-owned storage, rather than treating member clusters as the write-time source of truth.
+The workspace API must rely on the main Karmada apiserver as the authoritative source-object storage layer, rather than treating member clusters as the write-time source of truth or introducing a second persistence system.
 
 For supported phase-1 resources, the storage layer must be able to hold:
 
