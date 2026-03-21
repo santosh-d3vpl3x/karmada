@@ -19,7 +19,9 @@ package storage
 import (
 	"testing"
 
+	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 func TestNewAmbiguousTargetErrorUsesConflict(t *testing.T) {
@@ -45,6 +47,20 @@ func TestNewPlacementVisibilityDeniedErrorUsesForbidden(t *testing.T) {
 
 func TestNewUnsupportedVerbErrorUsesMethodNotSupported(t *testing.T) {
 	err := NewUnsupportedVerbError("events", "create")
+	if !apierrors.IsMethodNotSupported(err) {
+		t.Fatalf("expected method not supported, got %v", err)
+	}
+}
+
+func TestNewUnsupportedRequestErrorUsesNotFoundForUndiscoveredResource(t *testing.T) {
+	err := NewUnsupportedRequestError(schema.GroupVersionResource{Group: "", Version: "v1", Resource: "nodes"}, "get")
+	if !apierrors.IsNotFound(err) {
+		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestNewUnsupportedRequestErrorUsesMethodNotSupportedForUnsupportedVerb(t *testing.T) {
+	err := NewUnsupportedRequestError(corev1.SchemeGroupVersion.WithResource("events"), "create")
 	if !apierrors.IsMethodNotSupported(err) {
 		t.Fatalf("expected method not supported, got %v", err)
 	}
