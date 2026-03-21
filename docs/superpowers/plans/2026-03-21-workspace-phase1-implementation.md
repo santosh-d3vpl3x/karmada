@@ -2,11 +2,11 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Build the phase-1 tenant-facing workspace API so a workspace behaves like one bounded Kubernetes cluster view, with truthful discovery, Karmada-native desired-state writes, projected pod and event reads, and live pod subresource routing.
+**Goal:** Build the phase-1 tenant-facing workspace API so a workspace behaves like one bounded Kubernetes cluster view, with truthful discovery, Karmada-native desired-state writes, projected pod and event reads, live pod subresource routing, and explicit behavior verification for supported clients.
 
-**Architecture:** Add a dedicated `karmada-workspace-apiserver` that exposes the `workspace.karmada.io` API group and a tenant-facing REST facade over the main Karmada apiserver. Writable resources compile into ordinary source objects in the main Karmada apiserver, while projected runtime resources and live subresources are served from workspace-specific projection and routing code. Keep Karmada authoritative for scheduling, binding, propagation, and execution.
+**Architecture:** Add a dedicated `karmada-workspace-apiserver` that exposes the `workspace.karmada.io` API group and a tenant-facing REST facade over the main Karmada apiserver. Writable resources compile into ordinary source objects in the main Karmada apiserver, while projected runtime resources and live subresources are served from workspace-specific projection and routing code. Keep Karmada authoritative for scheduling, binding, propagation, and execution, and validate the supported surface through package tests, contract tests, and workspace-specific e2e.
 
-**Tech Stack:** Go, Cobra, genericapiserver, client-go, apiextensions/apimachinery, Karmada API conventions, generated clientset/listers/informers/applyconfigurations/openapi, Go tests, `hack/update-codegen.sh`, `hack/verify-codegen.sh`
+**Tech Stack:** Go, Cobra, genericapiserver, client-go, apiextensions/apimachinery, Karmada API conventions, generated clientset/listers/informers/applyconfigurations/openapi, Go tests, Ginkgo/Gomega e2e, `kubectl`, `hack/update-codegen.sh`, `hack/verify-codegen.sh`
 
 ---
 
@@ -50,6 +50,7 @@ Do not pull cluster-scoped policy APIs, arbitrary CRDs, generic live targeting, 
 - `cmd/karmada-workspace-apiserver/app/options/options_test.go`: options validation and defaults.
 - `pkg/workspace/apiserver.go`: workspace API group installation and server assembly.
 - `pkg/workspace/apiserver_test.go`: API group install and storage-map tests.
+- `pkg/workspace/apiserver_contract_test.go`: black-box contract tests for discovery, verbs, watch, and error semantics.
 - `pkg/workspace/index/types.go`: internal contracts for projected object snapshots and watch events.
 - `pkg/workspace/index/types_test.go`: index contract tests.
 - `pkg/workspace/support/matrix.go`: single source of truth for the phase-1 support matrix.
@@ -77,6 +78,11 @@ Do not pull cluster-scoped policy APIs, arbitrary CRDs, generic live targeting, 
 - `pkg/karmadactl/workspace/workspace.go`: parent `workspace` command.
 - `pkg/karmadactl/workspace/kubeconfig.go`: `karmadactl workspace kubeconfig`.
 - `pkg/karmadactl/workspace/kubeconfig_test.go`: kubeconfig generation tests.
+- `test/e2e/framework/workspace.go`: workspace-specific test helpers for kubeconfig, endpoint checks, and object assertions.
+- `test/e2e/suites/workspace/suite_test.go`: Ginkgo suite bootstrap for workspace e2e.
+- `test/e2e/suites/workspace/workspace_api_test.go`: CRUD, discovery, and watch behavior tests through the workspace endpoint.
+- `test/e2e/suites/workspace/workspace_live_test.go`: pod live-subresource and ambiguity tests through the workspace endpoint.
+- `test/e2e/suites/workspace/README.md`: manual verification notes, including bounded `k9s` smoke validation.
 - `artifacts/deploy/karmada-workspace-apiserver.yaml`: deployment, service, and RBAC for the new server.
 - `artifacts/deploy/karmada-workspace-apiserver-apiservice.yaml`: aggregated APIService registration for `workspace.karmada.io`.
 
@@ -92,10 +98,11 @@ Do not pull cluster-scoped policy APIs, arbitrary CRDs, generic live targeting, 
 
 ### Decomposition rules
 
-- Keep support-matrix decisions in one package and reuse them from storage, projection, and live routing.
+- Keep support-matrix decisions in one package and reuse them from storage, projection, live routing, and contract tests.
 - Keep REST storage thin. Put translation, projection, and live-target logic under `pkg/workspace/*`.
 - Compile writes into ordinary Karmada source objects. Do not introduce a parallel desired-state object model.
 - Keep runtime projection separate from live routing. List/watch and `connect` semantics have different failure modes.
+- Treat `kubectl` compatibility as an executable phase-1 requirement and `k9s` compatibility as a documented smoke bar.
 
 ## Tasks
 
@@ -634,7 +641,7 @@ git add pkg/workspace/live/resolve.go pkg/workspace/live/resolve_test.go pkg/reg
 git commit -m "feat: add workspace live pod routing"
 ```
 
-### Task 9: Wire Deployment Artifacts And Final Verification
+### Task 9: Wire Deployment Artifacts
 
 **Files:**
 - Create: `artifacts/deploy/karmada-workspace-apiserver.yaml`
@@ -660,13 +667,7 @@ Include:
 
 Keep the manifest minimal and phase-1 scoped.
 
-- [ ] **Step 3: Run final verification**
-
-Run: `go test ./pkg/apis/workspace/v1alpha1 ./pkg/workspace/... ./pkg/registry/workspace/storage ./pkg/karmadactl/workspace ./cmd/karmada-workspace-apiserver/... -count=1`
-Expected: PASS.
-
-Run: `bash hack/verify-codegen.sh`
-Expected: PASS.
+- [ ] **Step 3: Verify manifests are present**
 
 Run: `rg -n "workspace.karmada.io|karmada-workspace-apiserver" artifacts/deploy docs/superpowers/specs/2026-03-21-workspace-giant-cluster-design.md`
 Expected: PASS with the new manifests and updated spec references.
@@ -676,6 +677,136 @@ Expected: PASS with the new manifests and updated spec references.
 ```bash
 git add artifacts/deploy/karmada-workspace-apiserver.yaml artifacts/deploy/karmada-workspace-apiserver-apiservice.yaml docs/superpowers/specs/2026-03-21-workspace-giant-cluster-design.md
 git commit -m "feat: wire workspace apiserver deployment"
+```
+
+### Task 10: Add Workspace API Contract Tests
+
+**Files:**
+- Create: `pkg/workspace/apiserver_contract_test.go`
+- Modify: `pkg/workspace/apiserver.go`
+- Modify: `pkg/workspace/support/matrix.go`
+- Modify: `pkg/registry/workspace/storage/errors.go`
+
+- [ ] **Step 1: Write the failing contract tests**
+
+```go
+func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
+	server := newTestWorkspaceServer(t)
+	resources := discoverResources(t, server)
+	if containsResource(resources, "nodes") {
+		t.Fatal("did not expect nodes in phase-1 discovery")
+	}
+	if !containsResource(resources, "pods") {
+		t.Fatal("expected pods in phase-1 discovery")
+	}
+}
+
+func TestWorkspacePodLiveAmbiguityReturnsConflict(t *testing.T) {
+	server := newTestWorkspaceServer(t)
+	resp := connectPodSubresource(t, server, "logs", ambiguousPodRequest())
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+```
+
+- [ ] **Step 2: Run the contract tests to verify they fail**
+
+Run: `go test ./pkg/workspace -run 'TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources|TestWorkspacePodLiveAmbiguityReturnsConflict' -count=1`
+Expected: FAIL because the contract-test scaffolding does not exist yet.
+
+- [ ] **Step 3: Implement black-box contract tests around the workspace server**
+
+```go
+func newTestWorkspaceServer(t *testing.T) *httptest.Server {
+	t.Helper()
+	server, err := completedConfigForTest(t).New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return httptest.NewServer(server.GenericAPIServer.Handler.NonGoRestfulMux)
+}
+```
+
+The contract tests must verify:
+- truthful discovery
+- `404` for unsupported resources and subresources
+- `405` for unsupported verbs on discovered resources
+- `403` passthrough shape for authorization failures
+- `404` and `409` live-target errors
+- watch availability only on supported resources
+
+- [ ] **Step 4: Run the contract tests**
+
+Run: `go test ./pkg/workspace -run 'TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources|TestWorkspacePodLiveAmbiguityReturnsConflict|TestWorkspaceWatchContract|TestWorkspaceUnsupportedVerbContract' -count=1`
+Expected: PASS.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add pkg/workspace/apiserver_contract_test.go pkg/workspace/apiserver.go pkg/workspace/support/matrix.go pkg/registry/workspace/storage/errors.go
+git commit -m "test: add workspace api contract coverage"
+```
+
+### Task 11: Add Workspace E2E And Client Compatibility Suite
+
+**Files:**
+- Create: `test/e2e/framework/workspace.go`
+- Create: `test/e2e/suites/workspace/suite_test.go`
+- Create: `test/e2e/suites/workspace/workspace_api_test.go`
+- Create: `test/e2e/suites/workspace/workspace_live_test.go`
+- Create: `test/e2e/suites/workspace/README.md`
+
+- [ ] **Step 1: Write the failing workspace e2e skeleton and helper tests**
+
+```go
+var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
+	ginkgo.It("supports kubectl CRUD on writable resources", func() {
+		output, err := framework.RunWorkspaceKubectl(workspaceKubeconfig, "get", "configmaps", "-n", testNamespace)
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+		gomega.Expect(output).Should(gomega.ContainSubstring("NAME"))
+	})
+})
+```
+
+- [ ] **Step 2: Run the workspace e2e package to verify it fails**
+
+Run: `go test ./test/e2e/suites/workspace -count=1`
+Expected: FAIL because the suite and helpers do not exist yet.
+
+- [ ] **Step 3: Implement the workspace suite and kubectl-driven checks**
+
+```go
+func RunWorkspaceKubectl(kubeconfigPath string, args ...string) (string, error) {
+	cmd := exec.Command("kubectl", append([]string{"--kubeconfig", kubeconfigPath}, args...)...)
+	out, err := cmd.CombinedOutput()
+	return string(out), err
+}
+```
+
+The suite must cover:
+- generating workspace kubeconfig through `karmadactl workspace kubeconfig`
+- `kubectl api-resources` only showing the supported phase-1 surface
+- CRUD for supported writable resources
+- `kubectl get pods`, `kubectl get events`, and `kubectl get -w` on supported resources
+- `kubectl logs`, `kubectl exec`, `kubectl attach`, and `kubectl port-forward` on uniquely resolved pod targets
+- `409 Conflict` behavior for ambiguous live targets
+
+Document `k9s` as a manual smoke checklist in `test/e2e/suites/workspace/README.md` instead of pretending it is stable CI automation in phase 1.
+
+- [ ] **Step 4: Run the workspace e2e suite**
+
+Run: `go test ./test/e2e/suites/workspace -count=1`
+Expected: PASS for suite bootstrap and helper compilation.
+
+Run: `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`
+Expected: PASS against a phase-1 workspace-capable environment.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add test/e2e/framework/workspace.go test/e2e/suites/workspace/suite_test.go test/e2e/suites/workspace/workspace_api_test.go test/e2e/suites/workspace/workspace_live_test.go test/e2e/suites/workspace/README.md
+git commit -m "test: add workspace e2e compatibility suite"
 ```
 
 ## Behavior Verification
@@ -712,6 +843,8 @@ Run these before claiming the plan is fully executed:
 - `go test ./pkg/registry/workspace/storage -count=1`
 - `go test ./pkg/karmadactl/workspace -count=1`
 - `go test ./cmd/karmada-workspace-apiserver/... -count=1`
+- `go test ./test/e2e/suites/workspace -count=1`
+- `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`
 - `bash hack/verify-codegen.sh`
 
 ## Non-Goals For This Plan
@@ -721,3 +854,4 @@ Run these before claiming the plan is fully executed:
 - Generic per-request member-cluster selection UX
 - Direct desired-state writes to member clusters
 - Replacing existing `clusters/*/proxy` operator paths
+- Full `k9s` parity across unsupported cluster-scoped or metrics-backed views in phase 1
