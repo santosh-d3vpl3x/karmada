@@ -334,152 +334,72 @@ The planner should:
 - preserve final merge, authz, pagination, and logical identity semantics in the workspace layer.
 
 
-### Workspace topology resolver
+### Required internal capabilities
 
-The workspace layer needs a controller that resolves `Workspace.spec` into effective runtime topology.
+At this stage the design should describe the minimum internal capabilities required to make the API contract true, without committing to a specific controller or reconciler layout.
 
-It should reconcile:
+The important point is not how many reconcilers exist. The important point is which state transitions the control plane must support.
 
-- cluster selection into an effective backing-cluster set;
-- API profile into enabled resource and subresource exposure;
-- published endpoint state into `status.url` and readiness conditions;
-- workspace health into summarized status.
+### Workspace contract resolution
 
-This is not the same as serving requests. It is the control loop that keeps the workspace contract current as cluster membership, policy, or configuration changes.
+The control plane must be able to resolve `Workspace.spec` into effective runtime contract state.
 
-### Logical object storage
+That includes:
 
-The workspace API should persist logical object state in Karmada-owned storage, not treat member clusters as the write-time source of truth.
+- selected backing clusters;
+- effective API profile and discovery exposure;
+- published endpoint state in `status.url`;
+- readiness and degradation conditions.
 
-For supported phase-1 resources, the storage layer should hold:
+Whether this is implemented by one controller or several is an implementation choice, not part of the API design.
+
+### Logical object storage capability
+
+The workspace API must persist logical object state in Karmada-owned storage, rather than treating member clusters as the write-time source of truth.
+
+For supported phase-1 resources, the storage layer must be able to hold:
 
 - logical metadata and UID;
 - desired spec;
 - deletion and finalization state;
 - workspace-scoped status envelope;
-- mapping references needed for propagation and runtime projection.
+- references needed for propagation and runtime projection.
 
-### Projection and index pipelines
+### Projection and indexing capability
 
-The workspace index should be built by dedicated materialization pipelines rather than by request-time fan-out.
+The workspace index must be built by dedicated materialization paths rather than by request-time fan-out.
 
-Recommended pipelines:
+The design requires internal capability for:
 
-- source-object pipeline: consumes logical object changes from Karmada storage;
-- placement pipeline: consumes `ResourceBinding`, `ClusterResourceBinding`, and `Work` state;
-- runtime pipeline: consumes pod, event, and similar runtime feeds from backing clusters or pull-agent reports;
-- watch pipeline: turns accepted logical changes and runtime projection updates into workspace-scoped watch events.
+- source-object ingestion from logical workspace or Karmada storage;
+- placement ingestion from `ResourceBinding`, `ClusterResourceBinding`, and `Work` state;
+- runtime ingestion for pods, events, and similar runtime feeds;
+- workspace-scoped watch event generation and logical `resourceVersion` allocation.
 
-These pipelines feed the workspace index and the workspace logical `resourceVersion` stream.
+### State domains the control plane must keep current
 
-### Reconciliation model
-
-The design should use a small set of explicit reconcilers with clear ownership.
-
-#### 1. Workspace reconciler
-
-Reconciles `Workspace` objects.
-
-What it reconciles:
-
-- desired workspace spec;
-- selected member clusters;
-- effective API profile;
-- endpoint publication;
-- workspace conditions and readiness.
-
-Outputs:
-
-- `Workspace.status`;
-- effective cluster membership for the workspace;
-- enablement state for discovery and routing;
-- controller subscriptions or watches required for that workspace.
-
-#### 2. Namespace reconciler
-
-Reconciles logical workspace namespaces.
-
-What it reconciles:
-
-- logical namespace existence in the workspace;
-- backing namespace realization where phase-1 semantics require it;
-- namespace termination and cleanup;
-- namespace status and readiness.
-
-Outputs:
-
-- logical namespace object state;
-- backing realization state;
-- conditions and events that explain propagation progress.
-
-#### 3. Logical resource reconciler
-
-Reconciles supported logical resources whose source of truth lives in Karmada.
-
-What it reconciles:
-
-- accepted workspace CRUD into Karmada-authoritative desired state;
-- propagation intent toward backing clusters;
-- deletion and finalization state;
-- high-level status reflected back into the logical resource.
-
-This is the control loop that keeps `Deployment`, `Service`, `ConfigMap`, and similar supported resources aligned with Karmada propagation machinery.
-
-#### 4. Runtime projection reconciler
-
-Reconciles runtime observations into logical workspace runtime views.
-
-What it reconciles:
-
-- backing pod and event observations;
-- placement and owner relationships;
-- logical pod identity and collision handling;
-- projected runtime status for workspace reads and watches.
-
-This is how the workspace exposes runtime objects without making request-time fan-out the core data path.
-
-#### 5. Placement and health reconciler
-
-Reconciles secondary debug and placement views.
-
-What it reconciles:
-
-- logical object references;
-- per-cluster realization state;
-- ambiguity state for live routing;
-- summarized health, drift, and propagation failures.
-
-Outputs:
-
-- secondary placement or debug objects;
-- conditions and events used by operators and higher-level tooling.
-
-### What is being reconciled exactly
-
-The system is reconciling five different things, not one monolithic "giant cluster" object:
+The control plane must keep five state domains current:
 
 - workspace contract: which clusters, namespaces, and API profile define the tenant view;
-- logical desired state: what the user asked the workspace to create, update, or delete;
-- backing realization state: how that desired state is actually landing across member clusters;
-- runtime projection state: what pods, events, and similar runtime objects should appear in the workspace view;
-- debug and health state: what the system should report about placement, ambiguity, and convergence.
+- logical desired state: what the user asked the workspace API to create, update, or delete;
+- backing realization state: how that desired state lands across member clusters;
+- runtime projection state: what pods, events, and similar runtime objects appear in the workspace view;
+- debug and health state: what the system reports about placement, ambiguity, drift, and convergence.
 
-That split matters because each of those state domains changes at a different rate and has different correctness requirements.
+This is why some internal control loops are unavoidable even if we are focusing primarily on API surface. The API semantics depend on these state domains being maintained somewhere in the control plane.
 
-### What is not reconciled
+### What stays request-driven
 
-Some behaviors should stay request-driven rather than controller-driven.
-
-These are not long-running reconciliation targets:
+Some behaviors should remain request-time operations rather than long-running reconciled state:
 
 - `logs`;
 - `exec`;
 - `attach`;
 - `port-forward`;
+
 - one-off live target resolution.
 
-Those operations are resolved at request time against the current workspace index. The reconciled part is the index and placement knowledge they depend on, not the live session itself.
-
+Those operations should execute against the current workspace index and placement knowledge. The reconciled or maintained part is the underlying state they depend on, not the live session itself.
 ## Phases
 
 ### Phase 1: usable tenant workspace
