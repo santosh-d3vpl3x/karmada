@@ -32,6 +32,7 @@ import (
 	searchv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha2"
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/workspace/v1alpha1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -49,6 +50,7 @@ type Interface interface {
 	SearchV1alpha1() searchv1alpha1.SearchV1alpha1Interface
 	WorkV1alpha1() workv1alpha1.WorkV1alpha1Interface
 	WorkV1alpha2() workv1alpha2.WorkV1alpha2Interface
+	WorkspaceV1alpha1() workspacev1alpha1.WorkspaceV1alpha1Interface
 }
 
 // Clientset contains the clients for groups.
@@ -64,6 +66,7 @@ type Clientset struct {
 	searchV1alpha1      *searchv1alpha1.SearchV1alpha1Client
 	workV1alpha1        *workv1alpha1.WorkV1alpha1Client
 	workV1alpha2        *workv1alpha2.WorkV1alpha2Client
+	workspaceV1alpha1   *workspacev1alpha1.WorkspaceV1alpha1Client
 }
 
 // AppsV1alpha1 retrieves the AppsV1alpha1Client
@@ -114,6 +117,11 @@ func (c *Clientset) WorkV1alpha1() workv1alpha1.WorkV1alpha1Interface {
 // WorkV1alpha2 retrieves the WorkV1alpha2Client
 func (c *Clientset) WorkV1alpha2() workv1alpha2.WorkV1alpha2Interface {
 	return c.workV1alpha2
+}
+
+// WorkspaceV1alpha1 retrieves the WorkspaceV1alpha1Client
+func (c *Clientset) WorkspaceV1alpha1() workspacev1alpha1.WorkspaceV1alpha1Interface {
+	return c.workspaceV1alpha1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -200,6 +208,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.workspaceV1alpha1, err = workspacev1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -231,6 +243,7 @@ func New(c rest.Interface) *Clientset {
 	cs.searchV1alpha1 = searchv1alpha1.New(c)
 	cs.workV1alpha1 = workv1alpha1.New(c)
 	cs.workV1alpha2 = workv1alpha2.New(c)
+	cs.workspaceV1alpha1 = workspacev1alpha1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs

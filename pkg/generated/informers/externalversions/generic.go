@@ -31,6 +31,7 @@ import (
 	searchv1alpha1 "github.com/karmada-io/karmada/pkg/apis/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 	v1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -122,6 +123,12 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Work().V1alpha2().ClusterResourceBindings().Informer()}, nil
 	case v1alpha2.SchemeGroupVersion.WithResource("resourcebindings"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Work().V1alpha2().ResourceBindings().Informer()}, nil
+
+		// Group=workspace.karmada.io, Version=v1alpha1
+	case workspacev1alpha1.SchemeGroupVersion.WithResource("placementviews"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Workspace().V1alpha1().PlacementViews().Informer()}, nil
+	case workspacev1alpha1.SchemeGroupVersion.WithResource("workspaces"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Workspace().V1alpha1().Workspaces().Informer()}, nil
 
 	}
 

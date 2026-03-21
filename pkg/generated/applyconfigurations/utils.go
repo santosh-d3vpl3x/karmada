@@ -29,6 +29,7 @@ import (
 	searchv1alpha1 "github.com/karmada-io/karmada/pkg/apis/search/v1alpha1"
 	workv1alpha1 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha1"
 	v1alpha2 "github.com/karmada-io/karmada/pkg/apis/work/v1alpha2"
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 	appsv1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/apps/v1alpha1"
 	applyconfigurationsautoscalingv1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/autoscaling/v1alpha1"
 	applyconfigurationsclusterv1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/cluster/v1alpha1"
@@ -40,6 +41,7 @@ import (
 	applyconfigurationssearchv1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/search/v1alpha1"
 	applyconfigurationsworkv1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/work/v1alpha1"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/work/v1alpha2"
+	applyconfigurationsworkspacev1alpha1 "github.com/karmada-io/karmada/pkg/generated/applyconfigurations/workspace/v1alpha1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	managedfields "k8s.io/apimachinery/pkg/util/managedfields"
@@ -340,6 +342,24 @@ func ForKind(kind schema.GroupVersionKind) interface{} {
 		return &workv1alpha2.TargetClusterApplyConfiguration{}
 	case v1alpha2.SchemeGroupVersion.WithKind("WorkloadAffinityGroups"):
 		return &workv1alpha2.WorkloadAffinityGroupsApplyConfiguration{}
+
+		// Group=workspace.karmada.io, Version=v1alpha1
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("LiveAccessPolicy"):
+		return &applyconfigurationsworkspacev1alpha1.LiveAccessPolicyApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("NamespacePolicy"):
+		return &applyconfigurationsworkspacev1alpha1.NamespacePolicyApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("ObjectReference"):
+		return &applyconfigurationsworkspacev1alpha1.ObjectReferenceApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("PlacementView"):
+		return &applyconfigurationsworkspacev1alpha1.PlacementViewApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("PlacementViewStatus"):
+		return &applyconfigurationsworkspacev1alpha1.PlacementViewStatusApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("Workspace"):
+		return &applyconfigurationsworkspacev1alpha1.WorkspaceApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("WorkspaceSpec"):
+		return &applyconfigurationsworkspacev1alpha1.WorkspaceSpecApplyConfiguration{}
+	case workspacev1alpha1.SchemeGroupVersion.WithKind("WorkspaceStatus"):
+		return &applyconfigurationsworkspacev1alpha1.WorkspaceStatusApplyConfiguration{}
 
 	}
 	return nil

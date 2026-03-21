@@ -2289,6 +2289,26 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: antiAffinityGroup
       type:
         scalar: string
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.PlacementView
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.Workspace
+  scalar: untyped
+  list:
+    elementType:
+      namedType: __untyped_atomic_
+    elementRelationship: atomic
+  map:
+    elementType:
+      namedType: __untyped_deduced_
+    elementRelationship: separable
 - name: io.k8s.api.admissionregistration.v1.ServiceReference
   map:
     fields:

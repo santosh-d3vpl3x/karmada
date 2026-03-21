@@ -34,6 +34,7 @@ import (
 	remedy "github.com/karmada-io/karmada/pkg/generated/informers/externalversions/remedy"
 	search "github.com/karmada-io/karmada/pkg/generated/informers/externalversions/search"
 	work "github.com/karmada-io/karmada/pkg/generated/informers/externalversions/work"
+	workspace "github.com/karmada-io/karmada/pkg/generated/informers/externalversions/workspace"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -272,6 +273,7 @@ type SharedInformerFactory interface {
 	Remedy() remedy.Interface
 	Search() search.Interface
 	Work() work.Interface
+	Workspace() workspace.Interface
 }
 
 func (f *sharedInformerFactory) Apps() apps.Interface {
@@ -308,4 +310,8 @@ func (f *sharedInformerFactory) Search() search.Interface {
 
 func (f *sharedInformerFactory) Work() work.Interface {
 	return work.New(f, f.namespace, f.tweakListOptions)
+}
+
+func (f *sharedInformerFactory) Workspace() workspace.Interface {
+	return workspace.New(f, f.namespace, f.tweakListOptions)
 }

@@ -41,6 +41,8 @@ import (
 	fakeworkv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha1/fake"
 	workv1alpha2 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha2"
 	fakeworkv1alpha2 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/work/v1alpha2/fake"
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/workspace/v1alpha1"
+	fakeworkspacev1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/workspace/v1alpha1/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
@@ -202,4 +204,9 @@ func (c *Clientset) WorkV1alpha1() workv1alpha1.WorkV1alpha1Interface {
 // WorkV1alpha2 retrieves the WorkV1alpha2Client
 func (c *Clientset) WorkV1alpha2() workv1alpha2.WorkV1alpha2Interface {
 	return &fakeworkv1alpha2.FakeWorkV1alpha2{Fake: &c.Fake}
+}
+
+// WorkspaceV1alpha1 retrieves the WorkspaceV1alpha1Client
+func (c *Clientset) WorkspaceV1alpha1() workspacev1alpha1.WorkspaceV1alpha1Interface {
+	return &fakeworkspacev1alpha1.FakeWorkspaceV1alpha1{Fake: &c.Fake}
 }
