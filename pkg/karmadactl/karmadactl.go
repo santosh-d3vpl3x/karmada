@@ -46,6 +46,7 @@ import (
 	"github.com/karmada-io/karmada/pkg/karmadactl/get"
 	"github.com/karmada-io/karmada/pkg/karmadactl/interpret"
 	"github.com/karmada-io/karmada/pkg/karmadactl/join"
+	"github.com/karmada-io/karmada/pkg/karmadactl/kubeconfig"
 	"github.com/karmada-io/karmada/pkg/karmadactl/label"
 	"github.com/karmada-io/karmada/pkg/karmadactl/logs"
 	"github.com/karmada-io/karmada/pkg/karmadactl/options"
@@ -59,6 +60,7 @@ import (
 	"github.com/karmada-io/karmada/pkg/karmadactl/unregister"
 	"github.com/karmada-io/karmada/pkg/karmadactl/util"
 	utilcomp "github.com/karmada-io/karmada/pkg/karmadactl/util/completion"
+	"github.com/karmada-io/karmada/pkg/karmadactl/workspace"
 	"github.com/karmada-io/karmada/pkg/version/sharedcommand"
 )
 
@@ -130,6 +132,8 @@ func NewKarmadaCtlCommand(cmdUse, parentCommand string) *cobra.Command {
 		{
 			Message: "Cluster Management Commands:",
 			Commands: []*cobra.Command{
+				kubeconfig.NewCmdKubeconfig(f, parentCommand, ioStreams),
+				workspace.NewCmdWorkspace(f, parentCommand, ioStreams),
 				cordon.NewCmdCordon(f, parentCommand),
 				cordon.NewCmdUncordon(f, parentCommand),
 				taint.NewCmdTaint(f, parentCommand),
