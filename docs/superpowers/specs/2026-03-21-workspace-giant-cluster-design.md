@@ -237,6 +237,19 @@ Therefore:
 - resource coverage may phase in, but semantics must not be downgraded for enabled resources.
 
 
+### kubectl and k9s expectations
+
+Phase 1 must treat `kubectl` compatibility as a required bar and `k9s` compatibility as a bounded best-effort bar on the supported workload surface.
+
+Rules:
+
+- `kubectl` should work normally against the workspace kubeconfig for supported resources and subresources;
+- truthful discovery is mandatory so `kubectl` and `k9s` only see what the workspace actually supports;
+- if a resource or subresource is unsupported in phase 1, it should be absent from discovery rather than half-functional;
+- `k9s` compatibility in phase 1 is expected for namespaced workload views, pod navigation, events, logs, `exec`, and `portforward` on the supported surface;
+- missing cluster-scoped views such as nodes or metrics-backed surfaces are acceptable in phase 1 if discovery remains honest;
+- if `kubectl` or `k9s` breaks because the workspace advertised semantics it does not actually support, that is a workspace bug.
+
 ## API And Data Model
 
 ### Workspace endpoint contract

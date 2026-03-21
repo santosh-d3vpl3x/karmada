@@ -678,6 +678,31 @@ git add artifacts/deploy/karmada-workspace-apiserver.yaml artifacts/deploy/karma
 git commit -m "feat: wire workspace apiserver deployment"
 ```
 
+## Behavior Verification
+
+The phase-1 execution path should include a behavioral verification layer in addition to package tests.
+
+Required verification bars:
+
+- `kubectl` is a required compatibility bar for the supported phase-1 surface;
+- `k9s` is a bounded best-effort compatibility bar for the supported workload surface;
+- failures caused by dishonest discovery or advertised-but-broken semantics are release blockers;
+- unsupported resources are acceptable only when they are omitted from discovery and fail cleanly when addressed directly.
+
+Recommended harness layering:
+
+- package and storage tests for API, planner, projection, and live routing;
+- apiserver contract tests for discovery, verbs, status codes, and watch behavior;
+- Karmada e2e tests under `test/e2e/suites/workspace/` using the existing Ginkgo/Gomega harness;
+- later optional Sonobuoy packaging for portable black-box execution once the workspace suite is stable.
+
+Minimum CLI behavior checks to add during phase-1 execution:
+
+- `kubectl api-resources`, `kubectl get`, `kubectl describe`, `kubectl create`, `kubectl apply`, and `kubectl delete` for supported writable resources;
+- `kubectl get pods`, `kubectl logs`, `kubectl exec`, `kubectl attach`, and `kubectl port-forward` for projected pod flows;
+- `kubectl get events` and `kubectl get -w` on supported resources;
+- `k9s` smoke validation for namespace, workload, pod, event, log, and shell navigation against the workspace kubeconfig.
+
 ## Verification Checklist
 
 Run these before claiming the plan is fully executed:
