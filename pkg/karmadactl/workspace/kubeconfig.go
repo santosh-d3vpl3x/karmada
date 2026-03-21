@@ -25,9 +25,9 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
+	"k8s.io/client-go/discovery"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 	"k8s.io/kubectl/pkg/util/templates"
@@ -102,7 +102,7 @@ func (o *CommandKubeconfigOptions) Run(f util.Factory, workspaceName string, out
 	if err != nil {
 		return err
 	}
-	workspaceURL, err := resolveWorkspaceURL(context.TODO(), client.WorkspaceV1alpha1().Workspaces(), workspaceName)
+	workspaceURL, err := resolveWorkspaceURL(context.TODO(), client.Discovery(), client.WorkspaceV1alpha1().Workspaces(), workspaceName)
 	if err != nil {
 		return err
 	}
@@ -121,16 +121,42 @@ func (o *CommandKubeconfigOptions) Run(f util.Factory, workspaceName string, out
 	return err
 }
 
-func resolveWorkspaceURL(ctx context.Context, workspaces workspaceclientv1alpha1.WorkspaceInterface, workspaceName string) (string, error) {
+func resolveWorkspaceURL(ctx context.Context, discoveryClient discovery.DiscoveryInterface, workspaces workspaceclientv1alpha1.WorkspaceInterface, workspaceName string) (string, error) {
+	supportsGet, err := workspaceSupportsGet(discoveryClient)
+	if err != nil {
+		return "", err
+	}
+	if !supportsGet {
+		return "", nil
+	}
+
 	workspace, err := workspaces.Get(ctx, workspaceName, metav1.GetOptions{})
 	if err != nil {
-		if apierrors.IsMethodNotSupported(err) {
-			return "", nil
-		}
 		return "", err
 	}
 
 	return workspace.Status.URL, nil
+}
+
+func workspaceSupportsGet(discoveryClient discovery.DiscoveryInterface) (bool, error) {
+	resources, err := discoveryClient.ServerResourcesForGroupVersion(workspacev1alpha1.SchemeGroupVersion.String())
+	if err != nil {
+		return false, err
+	}
+
+	for _, resource := range resources.APIResources {
+		if resource.Name != workspacev1alpha1.ResourcePluralWorkspace {
+			continue
+		}
+		for _, verb := range resource.Verbs {
+			if verb == "get" {
+				return true, nil
+			}
+		}
+		return false, nil
+	}
+
+	return false, fmt.Errorf("workspace resource missing from discovery for %s", workspacev1alpha1.SchemeGroupVersion.String())
 }
 
 func buildWorkspaceKubeconfig(config *clientcmdapi.Config, workspaceName, workspaceURL string) (*clientcmdapi.Config, error) {

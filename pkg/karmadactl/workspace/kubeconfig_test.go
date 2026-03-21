@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	discoveryfake "k8s.io/client-go/discovery/fake"
 	coretesting "k8s.io/client-go/testing"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 
@@ -69,14 +70,14 @@ func newBaseKubeconfig() *clientcmdapi.Config {
 }
 
 func TestResolveWorkspaceURLUsesPublishedURL(t *testing.T) {
-	client := fakeclientset.NewSimpleClientset(&workspacev1alpha1.Workspace{
+	client := newWorkspaceClientWithDiscovery(&workspacev1alpha1.Workspace{
 		ObjectMeta: metav1.ObjectMeta{Name: "team-a"},
 		Status: workspacev1alpha1.WorkspaceStatus{
 			URL: "https://karmada.example.com/apis/workspace.karmada.io/v1alpha1/workspaces/team-a/proxy/",
 		},
-	})
+	}, []string{"get", "list"})
 
-	url, err := resolveWorkspaceURL(context.Background(), client.WorkspaceV1alpha1().Workspaces(), "team-a")
+	url, err := resolveWorkspaceURL(context.Background(), client.Discovery(), client.WorkspaceV1alpha1().Workspaces(), "team-a")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -85,28 +86,50 @@ func TestResolveWorkspaceURLUsesPublishedURL(t *testing.T) {
 	}
 }
 
-func TestResolveWorkspaceURLFallsBackWhenGetIsMethodNotSupported(t *testing.T) {
-	client := fakeclientset.NewSimpleClientset()
-	client.PrependReactor("get", "workspaces", func(coretesting.Action) (bool, runtime.Object, error) {
-		return true, nil, apierrors.NewMethodNotSupported(schema.GroupResource{Group: workspacev1alpha1.GroupName, Resource: workspacev1alpha1.ResourcePluralWorkspace}, "get")
-	})
+func TestResolveWorkspaceURLFallsBackWhenDiscoveryDoesNotAdvertiseGet(t *testing.T) {
+	client := newWorkspaceClientWithDiscovery(nil, []string{"create", "update"})
 
-	url, err := resolveWorkspaceURL(context.Background(), client.WorkspaceV1alpha1().Workspaces(), "team-a")
+	url, err := resolveWorkspaceURL(context.Background(), client.Discovery(), client.WorkspaceV1alpha1().Workspaces(), "team-a")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if url != "" {
 		t.Fatalf("expected empty published URL, got %q", url)
 	}
+	for _, action := range client.Actions() {
+		if action.GetVerb() == "get" && action.GetResource().Resource == workspacev1alpha1.ResourcePluralWorkspace {
+			t.Fatalf("expected no workspace get action, got %#v", action)
+		}
+	}
 }
 
 func TestResolveWorkspaceURLErrorOnOtherGetFailures(t *testing.T) {
-	client := fakeclientset.NewSimpleClientset()
+	client := newWorkspaceClientWithDiscovery(nil, []string{"get", "list"})
 	client.PrependReactor("get", "workspaces", func(coretesting.Action) (bool, runtime.Object, error) {
 		return true, nil, apierrors.NewForbidden(schema.GroupResource{Group: workspacev1alpha1.GroupName, Resource: workspacev1alpha1.ResourcePluralWorkspace}, "team-a", nil)
 	})
 
-	if _, err := resolveWorkspaceURL(context.Background(), client.WorkspaceV1alpha1().Workspaces(), "team-a"); err == nil {
+	if _, err := resolveWorkspaceURL(context.Background(), client.Discovery(), client.WorkspaceV1alpha1().Workspaces(), "team-a"); err == nil {
 		t.Fatal("expected get error")
 	}
+}
+
+func newWorkspaceClientWithDiscovery(workspace runtime.Object, verbs []string) *fakeclientset.Clientset {
+	var objects []runtime.Object
+	if workspace != nil {
+		objects = append(objects, workspace)
+	}
+	client := fakeclientset.NewSimpleClientset(objects...)
+	discovery := client.Discovery().(*discoveryfake.FakeDiscovery)
+	discovery.Resources = []*metav1.APIResourceList{{
+		GroupVersion: workspacev1alpha1.SchemeGroupVersion.String(),
+		APIResources: []metav1.APIResource{{
+			Name:         workspacev1alpha1.ResourcePluralWorkspace,
+			SingularName: workspacev1alpha1.ResourceSingularWorkspace,
+			Namespaced:   false,
+			Kind:         workspacev1alpha1.ResourceKindWorkspace,
+			Verbs:        metav1.Verbs(verbs),
+		}},
+	}}
+	return client
 }

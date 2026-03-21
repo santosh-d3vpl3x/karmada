@@ -17,60 +17,27 @@ limitations under the License.
 package storage
 
 import (
-	"context"
-
-	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
-	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apiserver/pkg/registry/rest"
 
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 )
 
 // WorkspaceREST implements the root workspace resource surface.
-type WorkspaceREST struct {
-	tableConvertor rest.TableConvertor
-}
+type WorkspaceREST struct{}
 
 var _ rest.Scoper = &WorkspaceREST{}
 var _ rest.Storage = &WorkspaceREST{}
-var _ rest.Getter = &WorkspaceREST{}
-var _ rest.Lister = &WorkspaceREST{}
 var _ rest.SingularNameProvider = &WorkspaceREST{}
 
 // NewWorkspaceREST returns a root REST storage for workspaces.
 func NewWorkspaceREST() *WorkspaceREST {
-	return &WorkspaceREST{tableConvertor: rest.NewDefaultTableConvertor(workspaceResource().GroupResource())}
-}
-
-func workspaceResource() schema.GroupVersionResource {
-	return workspacev1alpha1.SchemeGroupVersion.WithResource(workspacev1alpha1.ResourcePluralWorkspace)
+	return &WorkspaceREST{}
 }
 
 // New returns an empty Workspace object.
 func (r *WorkspaceREST) New() runtime.Object {
 	return &workspacev1alpha1.Workspace{}
-}
-
-// NewList returns an empty WorkspaceList object.
-func (r *WorkspaceREST) NewList() runtime.Object {
-	return &workspacev1alpha1.WorkspaceList{}
-}
-
-// Get returns the phase-1 unsupported-verb error until workspace backing storage exists.
-func (r *WorkspaceREST) Get(context.Context, string, *metav1.GetOptions) (runtime.Object, error) {
-	return nil, NewUnsupportedVerbError(workspacev1alpha1.ResourcePluralWorkspace, "get")
-}
-
-// List returns the phase-1 unsupported-verb error until workspace backing storage exists.
-func (r *WorkspaceREST) List(context.Context, *metainternalversion.ListOptions) (runtime.Object, error) {
-	return nil, NewUnsupportedVerbError(workspacev1alpha1.ResourcePluralWorkspace, "list")
-}
-
-// ConvertToTable delegates to the default table convertor.
-func (r *WorkspaceREST) ConvertToTable(ctx context.Context, object runtime.Object, tableOptions runtime.Object) (*metav1.Table, error) {
-	return r.tableConvertor.ConvertToTable(ctx, object, tableOptions)
 }
 
 // NamespaceScoped returns false because Workspace is cluster scoped.

@@ -19,7 +19,7 @@ package storage
 import (
 	"testing"
 
-	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apiserver/pkg/registry/rest"
 
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 )
@@ -37,16 +37,13 @@ func TestWorkspaceRESTMetadata(t *testing.T) {
 	}
 }
 
-func TestWorkspaceRESTGetUsesExplicitMethodNotSupported(t *testing.T) {
-	rest := NewWorkspaceREST()
-	if _, err := rest.Get(t.Context(), "team-a", nil); !apierrors.IsMethodNotSupported(err) {
-		t.Fatalf("expected method not supported, got %v", err)
-	}
-}
+func TestWorkspaceRESTDoesNotAdvertiseReadableVerbs(t *testing.T) {
+	storage := NewWorkspaceREST()
 
-func TestWorkspaceRESTListUsesExplicitMethodNotSupported(t *testing.T) {
-	rest := NewWorkspaceREST()
-	if _, err := rest.List(t.Context(), nil); !apierrors.IsMethodNotSupported(err) {
-		t.Fatalf("expected method not supported, got %v", err)
+	if _, ok := any(storage).(rest.Getter); ok {
+		t.Fatal("workspace storage must not advertise get before read support exists")
+	}
+	if _, ok := any(storage).(rest.Lister); ok {
+		t.Fatal("workspace storage must not advertise list before read support exists")
 	}
 }
