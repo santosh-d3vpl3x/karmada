@@ -1,0 +1,183 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: karmada-workspace-apiserver
+  namespace: karmada-system
+  labels:
+    app: karmada-workspace-apiserver
+    apiserver: "true"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: karmada-workspace-apiserver
+  labels:
+    app: karmada-workspace-apiserver
+    apiserver: "true"
+rules:
+  - apiGroups:
+      - authentication.k8s.io
+    resources:
+      - tokenreviews
+    verbs:
+      - create
+  - apiGroups:
+      - authorization.k8s.io
+    resources:
+      - subjectaccessreviews
+    verbs:
+      - create
+  - apiGroups:
+      - workspace.karmada.io
+    resources:
+      - workspaces
+      - placementviews
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - cluster.karmada.io
+    resources:
+      - clusters
+    verbs:
+      - get
+      - list
+      - watch
+  - apiGroups:
+      - work.karmada.io
+    resources:
+      - resourcebindings
+      - clusterresourcebindings
+      - works
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: karmada-workspace-apiserver
+  labels:
+    app: karmada-workspace-apiserver
+    apiserver: "true"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: karmada-workspace-apiserver
+subjects:
+  - kind: ServiceAccount
+    name: karmada-workspace-apiserver
+    namespace: karmada-system
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: karmada-workspace-apiserver
+  namespace: karmada-system
+  labels:
+    app: karmada-workspace-apiserver
+    apiserver: "true"
+spec:
+  selector:
+    matchLabels:
+      app: karmada-workspace-apiserver
+      apiserver: "true"
+  replicas: 2
+  template:
+    metadata:
+      labels:
+        app: karmada-workspace-apiserver
+        apiserver: "true"
+    spec:
+      serviceAccountName: karmada-workspace-apiserver
+      automountServiceAccountToken: false
+      containers:
+        - name: karmada-workspace-apiserver
+          image: docker.io/karmada/karmada-workspace-apiserver:latest
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            privileged: false
+          env:
+            - name: POD_IP
+              valueFrom:
+                fieldRef:
+                  fieldPath: status.podIP
+          command:
+            - /bin/karmada-workspace-apiserver
+            - --kubeconfig=/etc/karmada/config/karmada.config
+            - --authentication-kubeconfig=/etc/karmada/config/karmada.config
+            - --authorization-kubeconfig=/etc/karmada/config/karmada.config
+            - --etcd-servers=https://etcd-client.karmada-system.svc.cluster.local:2379
+            - --etcd-cafile=/etc/karmada/pki/etcd-client/ca.crt
+            - --etcd-certfile=/etc/karmada/pki/etcd-client/tls.crt
+            - --etcd-keyfile=/etc/karmada/pki/etcd-client/tls.key
+            - --tls-cert-file=/etc/karmada/pki/server/tls.crt
+            - --tls-private-key-file=/etc/karmada/pki/server/tls.key
+            - --audit-log-path=-
+            - --audit-log-maxage=0
+            - --audit-log-maxbackup=0
+            - --tls-min-version=VersionTLS13
+            - --logging-format=json
+            - --bind-address=$(POD_IP)
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 1
+            periodSeconds: 3
+            timeoutSeconds: 15
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 443
+              scheme: HTTPS
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 15
+          resources:
+            requests:
+              cpu: 100m
+          volumeMounts:
+            - name: karmada-config
+              mountPath: /etc/karmada/config
+            - name: server-cert
+              mountPath: /etc/karmada/pki/server
+              readOnly: true
+            - name: etcd-client-cert
+              mountPath: /etc/karmada/pki/etcd-client
+              readOnly: true
+      volumes:
+        - name: karmada-config
+          secret:
+            secretName: karmada-workspace-apiserver-config
+        - name: server-cert
+          secret:
+            secretName: karmada-workspace-apiserver-cert
+        - name: etcd-client-cert
+          secret:
+            secretName: karmada-workspace-apiserver-etcd-client-cert
+      securityContext:
+        seccompProfile:
+          type: RuntimeDefault
+      priorityClassName: system-node-critical
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: karmada-workspace-apiserver
+  namespace: karmada-system
+  labels:
+    app: karmada-workspace-apiserver
+    apiserver: "true"
+spec:
+  ports:
+    - port: 443
+      protocol: TCP
+      targetPort: 443
+  selector:
+    app: karmada-workspace-apiserver
