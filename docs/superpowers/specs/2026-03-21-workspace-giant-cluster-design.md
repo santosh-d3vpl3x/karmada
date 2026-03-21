@@ -111,6 +111,53 @@ Standard resource mutation is authoritative in Karmada/workspace storage.
 
 The workspace API is not a synchronous multi-cluster transaction API.
 
+
+### Integration with existing Karmada reconciliation
+
+This design must treat the workspace API as a tenant-facing front door over Karmada's existing desired-state and propagation machinery, not as a second competing control plane.
+
+Options considered:
+
+1. Let the workspace API own its own desired state and its own propagation logic.
+   Pros: looks cleanly separated on paper.
+   Cons: duplicates Karmada's core job, creates status skew, and almost guarantees redesign later.
+
+2. Make the workspace API mostly a thin proxy over existing Karmada and member-cluster APIs.
+   Pros: minimal implementation.
+   Cons: too much Karmada internals and cluster topology leak through, and the giant-cluster contract becomes fragile.
+
+3. Let the workspace API own the user-facing contract, but compile normal mutations into Karmada-native desired state and keep existing Karmada controllers authoritative for scheduling, binding, and work execution.
+   Pros: strongest fit, avoids a second control plane, minimizes rework, and keeps workspace semantics aligned with how Karmada already works.
+   Cons: requires an explicit translation and projection layer, and it forces a tightly bounded writable resource set in phase 1.
+
+Choice made:
+
+Option 3.
+
+Design principle:
+
+- Workspace API is the presentation and mutation front door.
+- Karmada remains the desired-state and propagation engine.
+- Member clusters remain the execution environment.
+- Only live subresources bypass the normal Karmada desired-state path.
+
+Implications:
+
+- The workspace API must not invent a second mutation model.
+- If a resource cannot be mapped cleanly onto Karmada's existing desired-state machinery, it should not be a phase-1 supported writable resource.
+- Desired-state resources should be written into Karmada-owned state, not directly into member clusters.
+- The workspace API should not secretly mutate `Work` objects as its primary user-facing write model.
+- Workspace status should be built from existing Karmada state first, then projected into the giant-cluster view.
+
+Phase-1 resource buckets:
+
+- desired-state resources: examples include `Deployment`, `Service`, `ConfigMap`, `Secret`, and `Job`; writes compile to Karmada-owned desired state and then flow through existing Karmada propagation;
+- runtime projected resources: examples include `Pod` and `Event`; these are derived from bindings, work state, and runtime feeds rather than treated as workspace-authoritative storage;
+- live pass-through subresources: examples include `logs`, `exec`, `attach`, and `port-forward`; these resolve at request time to exactly one backing target and execute there with impersonation.
+
+Explicit rule:
+
+Workspace mutations compile to Karmada-native desired state. Existing Karmada controllers remain authoritative for propagation and execution.
 ### Delete model
 
 Deletes should follow normal Kubernetes deletion behavior:
@@ -118,6 +165,7 @@ Deletes should follow normal Kubernetes deletion behavior:
 - logical objects remain visible with deletion state;
 - finalization and cleanup remain observable;
 - removal happens after reconciliation completes.
+
 
 ### Live subresource model
 
