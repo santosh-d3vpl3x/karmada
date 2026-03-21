@@ -21,6 +21,13 @@ This plan only implements the phase-1 contract from [2026-03-21-workspace-giant-
 
 Do not pull cluster-scoped policy APIs, arbitrary CRDs, generic live targeting, or multi-cluster write semantics into this phase.
 
+## Planning Status
+
+- This document is the execution-ready implementation plan for Phase 1 only.
+- Later phases remain explicitly recorded in `docs/superpowers/specs/2026-03-21-workspace-giant-cluster-design.md`, but they are not task-planned here on purpose.
+- When Phase 1 is complete and validated, create separate implementation plans for Phase 2 and Phase 3 instead of extending this file ad hoc.
+- Omitted task-level detail for later phases is intentional roadmap staging, not scope removal.
+
 ## File Structure
 
 ### Existing files to modify

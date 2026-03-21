@@ -672,6 +672,13 @@ The following items are intentionally not phase-1 requirements, but they remain 
 - harder aggregated API and extension semantics;
 - deeper runtime fidelity and debug ergonomics.
 
+## Planning Status
+
+- Phase 1 is implementation-planned and execution-ready in `docs/superpowers/plans/2026-03-21-workspace-phase1-implementation.md`.
+- The deferred items above remain explicitly on-roadmap, but they are only concrete at the contract and scope level today, not at the task-by-task implementation level.
+- Phase 2 and Phase 3 should each get their own implementation plan after phase-1 execution and learning, rather than being expanded prematurely inside the phase-1 plan.
+- Absence of task-level detail for deferred items means "not implementation-planned yet", not "dropped".
+
 ## Recommendation
 
 Proceed with a workspace virtual apiserver design, not a tenantized wildcard proxy.
