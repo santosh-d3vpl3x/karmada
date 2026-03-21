@@ -14,9 +14,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-// Package v1alpha1 is the v1alpha1 version of the workspace API.
-// +k8s:deepcopy-gen=package,register
-// +k8s:openapi-gen=true
-// +groupName=workspace.karmada.io
-// +k8s:openapi-model-package=com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1
-package v1alpha1
+package storage
+
+import (
+	"testing"
+
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
+)
+
+func TestPlacementViewRESTMetadata(t *testing.T) {
+	rest := NewPlacementViewREST()
+	if rest.NamespaceScoped() {
+		t.Fatal("expected cluster-scoped placement view storage")
+	}
+	if rest.GetSingularName() != workspacev1alpha1.ResourceSingularPlacementView {
+		t.Fatalf("unexpected singular name: %s", rest.GetSingularName())
+	}
+	if _, ok := rest.New().(*workspacev1alpha1.PlacementView); !ok {
+		t.Fatal("expected placement view object")
+	}
+}

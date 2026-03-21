@@ -21,9 +21,11 @@ import (
 	"k8s.io/apiserver/pkg/registry/rest"
 	genericapiserver "k8s.io/apiserver/pkg/server"
 	"k8s.io/apiserver/pkg/util/compatibility"
+	"k8s.io/klog/v2"
 
 	workspacescheme "github.com/karmada-io/karmada/pkg/apis/workspace/scheme"
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
+	workspacestorage "github.com/karmada-io/karmada/pkg/registry/workspace/storage"
 )
 
 const componentName = "karmada-workspace-apiserver"
@@ -62,8 +64,16 @@ func (cfg *Config) Complete() CompletedConfig {
 	return CompletedConfig{&c}
 }
 
-var storageMapBuilder = func(generic.RESTOptionsGetter) (map[string]rest.Storage, error) {
-	return map[string]rest.Storage{}, nil
+var storageMapBuilder = func(optsGetter generic.RESTOptionsGetter) (map[string]rest.Storage, error) {
+	storage, err := workspacestorage.NewStorage(workspacescheme.Scheme, optsGetter)
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]rest.Storage{
+		workspacev1alpha1.ResourcePluralWorkspace:     storage.Workspaces,
+		workspacev1alpha1.ResourcePluralPlacementView: storage.PlacementViews,
+	}, nil
 }
 
 var apiGroupInstaller = func(server *APIServer, apiGroupInfo *genericapiserver.APIGroupInfo) error {
@@ -81,6 +91,7 @@ func (c completedConfig) New() (*APIServer, error) {
 
 	storageMap, err := storageMapBuilder(c.GenericConfig.RESTOptionsGetter)
 	if err != nil {
+		klog.Errorf("unable to create REST storage for a workspace resource due to %v, will die", err)
 		return nil, err
 	}
 	apiGroupInfo.VersionedResourcesStorageMap[workspacev1alpha1.GroupVersion.Version] = storageMap

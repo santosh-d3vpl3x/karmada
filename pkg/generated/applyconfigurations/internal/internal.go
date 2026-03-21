@@ -2289,26 +2289,140 @@ var schemaYAML = typed.YAMLObject(`types:
     - name: antiAffinityGroup
       type:
         scalar: string
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.LiveAccessPolicy
+  map:
+    fields:
+    - name: enabled
+      type:
+        scalar: boolean
+    - name: subresources
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.NamespacePolicy
+  map:
+    fields:
+    - name: mode
+      type:
+        scalar: string
+    - name: namespaces
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.ObjectReference
+  map:
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: name
+      type:
+        scalar: string
+    - name: namespace
+      type:
+        scalar: string
 - name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.PlacementView
-  scalar: untyped
-  list:
-    elementType:
-      namedType: __untyped_atomic_
-    elementRelationship: atomic
   map:
-    elementType:
-      namedType: __untyped_deduced_
-    elementRelationship: separable
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: status
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.PlacementViewStatus
+      default: {}
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.PlacementViewStatus
+  map:
+    fields:
+    - name: ambiguousLiveTarget
+      type:
+        scalar: boolean
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: atomic
+    - name: eligibleClusters
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+    - name: selectedClusters
+      type:
+        list:
+          elementType:
+            scalar: string
+          elementRelationship: atomic
+    - name: subjectRef
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.ObjectReference
+      default: {}
 - name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.Workspace
-  scalar: untyped
-  list:
-    elementType:
-      namedType: __untyped_atomic_
-    elementRelationship: atomic
   map:
-    elementType:
-      namedType: __untyped_deduced_
-    elementRelationship: separable
+    fields:
+    - name: apiVersion
+      type:
+        scalar: string
+    - name: kind
+      type:
+        scalar: string
+    - name: metadata
+      type:
+        namedType: io.k8s.apimachinery.pkg.apis.meta.v1.ObjectMeta
+      default: {}
+    - name: spec
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.WorkspaceSpec
+      default: {}
+    - name: status
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.WorkspaceStatus
+      default: {}
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.WorkspaceSpec
+  map:
+    fields:
+    - name: clusterSelector
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.policy.v1alpha1.ClusterAffinity
+      default: {}
+    - name: liveAccess
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.LiveAccessPolicy
+    - name: namespacePolicy
+      type:
+        namedType: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.NamespacePolicy
+      default: {}
+    - name: placementVisibility
+      type:
+        scalar: string
+- name: com.github.karmada-io.karmada.pkg.apis.workspace.v1alpha1.WorkspaceStatus
+  map:
+    fields:
+    - name: conditions
+      type:
+        list:
+          elementType:
+            namedType: io.k8s.apimachinery.pkg.apis.meta.v1.Condition
+          elementRelationship: atomic
+    - name: url
+      type:
+        scalar: string
 - name: io.k8s.api.admissionregistration.v1.ServiceReference
   map:
     fields:
