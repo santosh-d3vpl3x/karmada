@@ -19,6 +19,8 @@ package storage
 import (
 	"testing"
 
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
+
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
 )
 
@@ -32,5 +34,19 @@ func TestWorkspaceRESTMetadata(t *testing.T) {
 	}
 	if _, ok := rest.New().(*workspacev1alpha1.Workspace); !ok {
 		t.Fatal("expected workspace object")
+	}
+}
+
+func TestWorkspaceRESTGetUsesExplicitMethodNotSupported(t *testing.T) {
+	rest := NewWorkspaceREST()
+	if _, err := rest.Get(t.Context(), "team-a", nil); !apierrors.IsMethodNotSupported(err) {
+		t.Fatalf("expected method not supported, got %v", err)
+	}
+}
+
+func TestWorkspaceRESTListUsesExplicitMethodNotSupported(t *testing.T) {
+	rest := NewWorkspaceREST()
+	if _, err := rest.List(t.Context(), nil); !apierrors.IsMethodNotSupported(err) {
+		t.Fatalf("expected method not supported, got %v", err)
 	}
 }
