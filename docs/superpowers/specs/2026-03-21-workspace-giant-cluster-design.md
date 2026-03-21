@@ -158,6 +158,7 @@ Phase-1 resource buckets:
 Explicit rule:
 
 Workspace mutations compile to Karmada-native desired state. Existing Karmada controllers remain authoritative for propagation and execution.
+
 ### Delete model
 
 Deletes should follow normal Kubernetes deletion behavior:
@@ -343,6 +344,155 @@ Phase 1 should keep the data model intentionally bounded:
 
 Later phases should extend this boundary explicitly rather than changing the meaning of phase-1 contracts.
 
+
+### Phase-1 concrete schema
+
+Phase 1 should lock the `Workspace` schema tightly enough that clients and controllers do not need to guess defaults.
+
+Recommended concrete shape:
+
+```go
+type WorkspaceSpec struct {
+    ClusterSelector policyv1alpha1.ClusterAffinity `json:"clusterSelector"`
+    NamespacePolicy NamespacePolicy                `json:"namespacePolicy,omitempty"`
+    LiveAccess      *LiveAccessPolicy              `json:"liveAccess,omitempty"`
+    PlacementVisibility PlacementVisibility        `json:"placementVisibility,omitempty"`
+    APIProfile      APIProfile                     `json:"apiProfile,omitempty"`
+}
+
+type NamespacePolicy struct {
+    Mode  NamespacePolicyMode `json:"mode,omitempty"`
+    Names []string            `json:"names,omitempty"`
+}
+
+type LiveAccessPolicy struct {
+    EnabledSubresources []string `json:"enabledSubresources,omitempty"`
+}
+
+type WorkspaceStatus struct {
+    URL                 string             `json:"url,omitempty"`
+    Phase               WorkspacePhase     `json:"phase,omitempty"`
+    Conditions          []metav1.Condition `json:"conditions,omitempty"`
+    ObservedGeneration  int64              `json:"observedGeneration,omitempty"`
+    ResolvedClusters    []string           `json:"resolvedClusters,omitempty"`
+    EffectiveAPIProfile APIProfile         `json:"effectiveAPIProfile,omitempty"`
+}
+```
+
+Phase-1 enums and defaults:
+
+- `APIProfile`: `workload-v1` only in phase 1; default `workload-v1`;
+- `NamespacePolicy.Mode`: `Dynamic` or `Fixed`; default `Dynamic`;
+- `PlacementVisibility`: `Hidden`, `Summary`, or `Debug`; default `Summary`;
+- `WorkspacePhase`: `Pending`, `Ready`, or `Degraded`.
+
+If `NamespacePolicy.Mode` is `Fixed`, `Names` must be non-empty. If `Dynamic`, namespace CRUD through the workspace API is allowed subject to RBAC and profile support.
+
+Phase-1 condition types should be:
+
+- `Resolved`
+- `EndpointPublished`
+- `APIProfileApplied`
+- `IndexReady`
+
+### Phase-1 resource support matrix
+
+The phase-1 profile must be explicit about what is writable, projected, and unsupported.
+
+| Resource | Read | Write | Live subresources | Notes |
+| --- | --- | --- | --- | --- |
+| `namespaces` | yes | yes | none | logical workspace namespace object |
+| `configmaps` | yes | yes | none | desired-state resource |
+| `secrets` | yes | yes | none | desired-state resource; same workspace auth model as other resources |
+| `services` | yes | yes | none | desired-state resource |
+| `deployments` | yes | yes | none | desired-state resource |
+| `statefulsets` | yes | yes | none | desired-state resource |
+| `daemonsets` | yes | yes | none | desired-state resource |
+| `jobs` | yes | yes | none | desired-state resource |
+| `cronjobs` | yes | yes | none | desired-state resource |
+| `pods` | yes | no | `log`, `exec`, `attach`, `portforward` | runtime projection only |
+| `events` | yes | no | none | runtime projection only |
+
+Phase-1 explicit non-goals for writes:
+
+- no direct pod mutation through the workspace API;
+- no node virtualization;
+- no generic CRD write support;
+- no promise that every Karmada-propagated resource is automatically workspace-writable.
+
+### Mutation translation contract
+
+The workspace API must translate supported writes into Karmada-native desired state rather than inventing a separate propagation model.
+
+Phase-1 rules:
+
+- a write to a supported desired-state resource creates or updates the logical source object in Karmada-owned storage;
+- Karmada-native propagation machinery remains responsible for producing bindings and work toward member clusters;
+- workspace-visible status is then projected back from existing Karmada state and runtime observations;
+- runtime projected resources such as pods and events are never the primary write target;
+- deletion follows the same rule: delete the logical workspace object first, then let Karmada propagation and cleanup converge underneath it.
+
+This means phase 1 should only expose writable resources whose semantics map cleanly onto Karmada's existing desired-state model.
+
+### Discovery, watch, and consistency guarantees
+
+Phase 1 should make the following guarantees for supported resources:
+
+- discovery only advertises resources and subresources that are actually supported in the workspace's effective API profile;
+- supported resources have workspace-scoped `resourceVersion` values;
+- `get`, `list`, and `watch` semantics are defined at workspace scope, not as raw pass-through aggregation;
+- optimistic concurrency for writable logical resources is based on workspace-visible metadata and `resourceVersion`;
+- no guarantee is made about global ordering across different resource types;
+- no guarantee is made in phase 1 for server-side apply, apply conflicts, or every advanced API option unless the specific resource implementation explicitly supports it.
+
+### Error model
+
+The workspace API should use a small, explicit error model.
+
+Phase-1 rules:
+
+- resource or subresource not in the effective profile: `404 NotFound`;
+- discovered resource with unsupported verb in phase 1: `405 MethodNotAllowed`;
+- workspace RBAC denial: `403 Forbidden`;
+- backing-cluster live-action RBAC denial: `403 Forbidden` with a distinct workspace error reason indicating backing-cluster denial;
+- live action with zero eligible targets: `404 NotFound`;
+- live action with multiple eligible targets: `409 Conflict`;
+- operation blocked because backing realization is not ready yet: `409 Conflict`.
+
+The error body should make the failure domain explicit: workspace contract, workspace authorization, backing-cluster authorization, target ambiguity, or realization state.
+
+### Debug surface decision
+
+Phase 1 should use both native-looking status surfaces and one explicit read-only debug API.
+
+Choice made:
+
+- keep primary objects native-looking;
+- expose concise conditions and events on primary objects where appropriate;
+- add a read-only `PlacementView` resource in the workspace API group for placement and realization debugging.
+
+`PlacementView` should be secondary and RBAC-protected. It is not the primary UX, but it keeps cluster placement and ambiguity information from being hidden or forced into object names.
+
+### Interoperability boundaries
+
+The design should be explicit about what is tenant-facing and what remains operator-facing.
+
+Tenant-facing contract:
+
+- workspace endpoint and generated kubeconfig;
+- workspace-scoped discovery for the effective profile;
+- supported logical resources;
+- projected runtime resources;
+- read-only placement or debug views when allowed by RBAC.
+
+Operator-facing and not part of the tenant contract:
+
+- raw `PropagationPolicy` and `ClusterPropagationPolicy` management;
+- raw `ResourceBinding`, `ClusterResourceBinding`, and `Work` objects;
+- direct `clusters/<name>/proxy` and wildcard proxy usage;
+- direct `search/proxy` usage.
+
+The workspace implementation may depend on those Karmada APIs internally, but tenants should not need to understand or depend on them for normal workflows.
 ## Architecture
 
 ### Workspace apiserver
