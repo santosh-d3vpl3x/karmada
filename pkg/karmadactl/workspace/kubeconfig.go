@@ -25,6 +25,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/cli-runtime/pkg/genericiooptions"
 	"k8s.io/client-go/tools/clientcmd"
@@ -32,6 +33,7 @@ import (
 	"k8s.io/kubectl/pkg/util/templates"
 
 	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
+	workspaceclientv1alpha1 "github.com/karmada-io/karmada/pkg/generated/clientset/versioned/typed/workspace/v1alpha1"
 	"github.com/karmada-io/karmada/pkg/karmadactl/options"
 	"github.com/karmada-io/karmada/pkg/karmadactl/util"
 	utilcomp "github.com/karmada-io/karmada/pkg/karmadactl/util/completion"
@@ -100,12 +102,12 @@ func (o *CommandKubeconfigOptions) Run(f util.Factory, workspaceName string, out
 	if err != nil {
 		return err
 	}
-	workspace, err := client.WorkspaceV1alpha1().Workspaces().Get(context.TODO(), workspaceName, metav1.GetOptions{})
+	workspaceURL, err := resolveWorkspaceURL(context.TODO(), client.WorkspaceV1alpha1().Workspaces(), workspaceName)
 	if err != nil {
 		return err
 	}
 
-	kubeconfig, err := buildWorkspaceKubeconfigForContext(&rawConfig, selectedContext, workspaceName, workspace.Status.URL, o.ContextName, o.Flatten)
+	kubeconfig, err := buildWorkspaceKubeconfigForContext(&rawConfig, selectedContext, workspaceName, workspaceURL, o.ContextName, o.Flatten)
 	if err != nil {
 		return err
 	}
@@ -117,6 +119,18 @@ func (o *CommandKubeconfigOptions) Run(f util.Factory, workspaceName string, out
 
 	_, err = out.Write(data)
 	return err
+}
+
+func resolveWorkspaceURL(ctx context.Context, workspaces workspaceclientv1alpha1.WorkspaceInterface, workspaceName string) (string, error) {
+	workspace, err := workspaces.Get(ctx, workspaceName, metav1.GetOptions{})
+	if err != nil {
+		if apierrors.IsMethodNotSupported(err) {
+			return "", nil
+		}
+		return "", err
+	}
+
+	return workspace.Status.URL, nil
 }
 
 func buildWorkspaceKubeconfig(config *clientcmdapi.Config, workspaceName, workspaceURL string) (*clientcmdapi.Config, error) {
