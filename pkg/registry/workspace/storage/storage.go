@@ -29,9 +29,14 @@ type Storage struct {
 }
 
 // NewStorage returns the root storages installed for the workspace API group.
-func NewStorage(_ *runtime.Scheme, _ generic.RESTOptionsGetter) (*Storage, error) {
+func NewStorage(_ *runtime.Scheme, _ generic.RESTOptionsGetter, proxyHandlers ...WorkspaceProxyHandler) (*Storage, error) {
+	var proxyHandler WorkspaceProxyHandler
+	if len(proxyHandlers) > 0 {
+		proxyHandler = proxyHandlers[0]
+	}
+
 	return &Storage{
-		Workspaces:     NewWorkspaceREST(nil),
+		Workspaces:     NewWorkspaceREST(proxyHandler),
 		PlacementViews: NewPlacementViewREST(),
 	}, nil
 }
