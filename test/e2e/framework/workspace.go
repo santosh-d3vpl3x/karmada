@@ -17,7 +17,9 @@ limitations under the License.
 package framework
 
 import (
+	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,10 +62,53 @@ func LoadWorkspaceRESTClientConfig(kubeconfigPath string) (*rest.Config, error) 
 
 // RunWorkspaceKubectl runs kubectl against the generated workspace kubeconfig.
 func RunWorkspaceKubectl(kubeconfigPath string, args ...string) (string, error) {
-	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
-	cmd := exec.Command("kubectl", cmdArgs...) //nolint:gosec
+	return RunWorkspaceKubectlWithInput(kubeconfigPath, nil, args...)
+}
+
+// RunWorkspaceKubectlWithInput runs kubectl against the generated workspace kubeconfig with optional stdin.
+func RunWorkspaceKubectlWithInput(kubeconfigPath string, stdin io.Reader, args ...string) (string, error) {
+	cmd := NewWorkspaceKubectlCommand(nil, kubeconfigPath, args...)
+	cmd.Stdin = stdin
 	output, err := cmd.CombinedOutput()
 	return string(output), err
+}
+
+// NewWorkspaceKubectlCommand returns a kubectl command for the generated workspace kubeconfig.
+func NewWorkspaceKubectlCommand(ctx context.Context, kubeconfigPath string, args ...string) *exec.Cmd {
+	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
+	if ctx != nil {
+		return exec.CommandContext(ctx, "kubectl", cmdArgs...) //nolint:gosec
+	}
+	return exec.Command("kubectl", cmdArgs...) //nolint:gosec
+}
+
+// RunWorkspaceKarmadactl runs karmadactl against the control-plane kubeconfig.
+func RunWorkspaceKarmadactl(kubeconfigPath, karmadaContext, karmadactlPath string, timeout time.Duration, args ...string) (string, error) {
+	return NewKarmadactlCommand(kubeconfigPath, karmadaContext, karmadactlPath, "", timeout, args...).ExecOrDie()
+}
+
+// GenerateWorkspaceAccess builds a workspace kubeconfig through karmadactl and returns the resulting access details.
+func GenerateWorkspaceAccess(dir, workspaceName, kubeconfigPath, karmadaContext, karmadactlPath string, timeout time.Duration) (WorkspaceAccess, error) {
+	kubeconfig, err := RunWorkspaceKarmadactl(kubeconfigPath, karmadaContext, karmadactlPath, timeout, "workspace", "kubeconfig", workspaceName)
+	if err != nil {
+		return WorkspaceAccess{}, err
+	}
+
+	path, err := WriteWorkspaceKubeconfig(dir, workspaceName, []byte(kubeconfig))
+	if err != nil {
+		return WorkspaceAccess{}, err
+	}
+
+	config, err := LoadWorkspaceRESTClientConfig(path)
+	if err != nil {
+		return WorkspaceAccess{}, err
+	}
+
+	return WorkspaceAccess{
+		Name:           workspaceName,
+		KubeconfigPath: path,
+		Endpoint:       config.Host,
+	}, nil
 }
 
 // NewWorkspaceAccess records the generated kubeconfig path and workspace endpoint for one test workspace.
