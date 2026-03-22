@@ -17,10 +17,13 @@ limitations under the License.
 package support
 
 import (
+	"reflect"
+	"sort"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
 	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
 	policyv1 "k8s.io/api/policy/v1"
@@ -123,5 +126,44 @@ func TestAdditionalPhase2CapabilitiesAreWritable(t *testing.T) {
 				t.Fatalf("expected %s create support", tt.name)
 			}
 		})
+	}
+}
+
+func TestResourcesMatchesCompletedPhase2Baseline(t *testing.T) {
+	expected := []schema.GroupVersionResource{
+		appsv1.SchemeGroupVersion.WithResource("daemonsets"),
+		appsv1.SchemeGroupVersion.WithResource("deployments"),
+		appsv1.SchemeGroupVersion.WithResource("statefulsets"),
+		autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"),
+		batchv1.SchemeGroupVersion.WithResource("cronjobs"),
+		batchv1.SchemeGroupVersion.WithResource("jobs"),
+		corev1.SchemeGroupVersion.WithResource("configmaps"),
+		corev1.SchemeGroupVersion.WithResource("events"),
+		corev1.SchemeGroupVersion.WithResource("limitranges"),
+		corev1.SchemeGroupVersion.WithResource("namespaces"),
+		corev1.SchemeGroupVersion.WithResource("pods"),
+		corev1.SchemeGroupVersion.WithResource("resourcequotas"),
+		corev1.SchemeGroupVersion.WithResource("secrets"),
+		corev1.SchemeGroupVersion.WithResource("serviceaccounts"),
+		corev1.SchemeGroupVersion.WithResource("services"),
+		networkingv1.SchemeGroupVersion.WithResource("ingresses"),
+		networkingv1.SchemeGroupVersion.WithResource("networkpolicies"),
+		policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"),
+		rbacv1.SchemeGroupVersion.WithResource("rolebindings"),
+		rbacv1.SchemeGroupVersion.WithResource("roles"),
+	}
+
+	sort.Slice(expected, func(i, j int) bool {
+		if expected[i].Group != expected[j].Group {
+			return expected[i].Group < expected[j].Group
+		}
+		if expected[i].Version != expected[j].Version {
+			return expected[i].Version < expected[j].Version
+		}
+		return expected[i].Resource < expected[j].Resource
+	})
+
+	if actual := Resources(); !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("unexpected phase2 baseline resources: %#v", actual)
 	}
 }

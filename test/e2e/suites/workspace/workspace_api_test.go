@@ -106,7 +106,14 @@ func supportedWorkspaceAPIResources() []string {
 }
 
 func unsupportedWorkspaceAPIResources() []string {
-	return []string{"nodes", "pods/proxy", "replicationcontrollers", "placements.cluster.karmada.io"}
+	return []string{
+		"clusterroles.rbac.authorization.k8s.io",
+		"customresourcedefinitions.apiextensions.k8s.io",
+		"nodes",
+		"placements.cluster.karmada.io",
+		"pods/proxy",
+		"replicationcontrollers",
+	}
 }
 
 func normalizeLines(output string) []string {

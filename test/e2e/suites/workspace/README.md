@@ -11,6 +11,7 @@ The suite is intentionally honest about environmental readiness.
 
 The automated suite covers the currently implemented workspace surface on this branch:
 
+- the full completed phase-2 discovery baseline, without prematurely advertising deferred phase-3 CRD or cluster-scoped extensions
 - workspace kubeconfig generation through `karmadactl workspace kubeconfig`
 - `kubectl api-resources` over the supported workspace surface
 - namespace creation and visibility through the workspace API

@@ -77,6 +77,11 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 			t.Fatalf("expected %s in workspace api group discovery", name)
 		}
 	}
+	for _, name := range []string{"apiextensions.k8s.io", "example.io"} {
+		if containsGroup(groups, name) {
+			t.Fatalf("did not expect %s in workspace api group discovery", name)
+		}
+	}
 
 	coreResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/api/v1"))
 	if containsResource(coreResources, "nodes") {
@@ -131,6 +136,9 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 		if !containsResource(rbacResources, name) {
 			t.Fatalf("expected %s in workspace rbac discovery", name)
 		}
+	}
+	if containsResource(rbacResources, "clusterroles") {
+		t.Fatal("did not expect clusterroles in workspace rbac discovery")
 	}
 
 	policyResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/policy/v1"))

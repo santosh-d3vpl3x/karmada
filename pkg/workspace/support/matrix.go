@@ -17,16 +17,8 @@ limitations under the License.
 package support
 
 import (
-	"sort"
 	"strings"
 
-	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
-	batchv1 "k8s.io/api/batch/v1"
-	corev1 "k8s.io/api/core/v1"
-	networkingv1 "k8s.io/api/networking/v1"
-	policyv1 "k8s.io/api/policy/v1"
-	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -37,29 +29,6 @@ type Capability struct {
 	Write       bool
 	Watch       bool
 	ConnectSubs sets.Set[string]
-}
-
-var workspaceMatrix = map[schema.GroupVersionResource]Capability{
-	corev1.SchemeGroupVersion.WithResource("namespaces"):                      newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("configmaps"):                      newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("secrets"):                         newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("serviceaccounts"):                 newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("limitranges"):                     newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("resourcequotas"):                  newCapability(true, true, true),
-	rbacv1.SchemeGroupVersion.WithResource("roles"):                           newCapability(true, true, true),
-	rbacv1.SchemeGroupVersion.WithResource("rolebindings"):                    newCapability(true, true, true),
-	networkingv1.SchemeGroupVersion.WithResource("networkpolicies"):           newCapability(true, true, true),
-	networkingv1.SchemeGroupVersion.WithResource("ingresses"):                 newCapability(true, true, true),
-	policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"):          newCapability(true, true, true),
-	autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"): newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("services"):                        newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("deployments"):                     newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("statefulsets"):                    newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("daemonsets"):                      newCapability(true, true, true),
-	batchv1.SchemeGroupVersion.WithResource("jobs"):                           newCapability(true, true, true),
-	batchv1.SchemeGroupVersion.WithResource("cronjobs"):                       newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("pods"):                            newCapability(true, false, true, "logs", "exec", "attach", "portforward"),
-	corev1.SchemeGroupVersion.WithResource("events"):                          newCapability(true, false, true),
 }
 
 func newCapability(read, write, watch bool, connectSubs ...string) Capability {
@@ -86,22 +55,22 @@ func cloneCapability(capability Capability) Capability {
 
 // CapabilityFor returns the supported workspace capability for a resource, if exposed.
 func CapabilityFor(resource schema.GroupVersionResource) (Capability, bool) {
-	capability, ok := workspaceMatrix[resource]
+	entry, ok := defaultCatalog.Entry(resource)
 	if !ok {
 		return Capability{}, false
 	}
-	return cloneCapability(capability), true
+	return entry.Capability, true
 }
 
 // Exposes reports whether the resource is part of the supported workspace surface.
 func Exposes(resource schema.GroupVersionResource) bool {
-	_, ok := workspaceMatrix[resource]
+	_, ok := defaultCatalog.Entry(resource)
 	return ok
 }
 
 // Supports reports whether a verb is allowed by the workspace support matrix.
 func Supports(resource schema.GroupVersionResource, verb string) bool {
-	capability, ok := workspaceMatrix[resource]
+	capability, ok := CapabilityFor(resource)
 	if !ok {
 		return false
 	}
@@ -120,7 +89,7 @@ func Supports(resource schema.GroupVersionResource, verb string) bool {
 
 // SupportsSubresource reports whether a live pod subresource is exposed by the workspace surface.
 func SupportsSubresource(resource schema.GroupVersionResource, subresource string) bool {
-	capability, ok := workspaceMatrix[resource]
+	capability, ok := CapabilityFor(resource)
 	if !ok {
 		return false
 	}
@@ -129,20 +98,5 @@ func SupportsSubresource(resource schema.GroupVersionResource, subresource strin
 
 // Resources returns the full workspace discovery surface in stable order.
 func Resources() []schema.GroupVersionResource {
-	resources := make([]schema.GroupVersionResource, 0, len(workspaceMatrix))
-	for resource := range workspaceMatrix {
-		resources = append(resources, resource)
-	}
-
-	sort.Slice(resources, func(i, j int) bool {
-		if resources[i].Group != resources[j].Group {
-			return resources[i].Group < resources[j].Group
-		}
-		if resources[i].Version != resources[j].Version {
-			return resources[i].Version < resources[j].Version
-		}
-		return resources[i].Resource < resources[j].Resource
-	})
-
-	return resources
+	return defaultCatalog.Resources()
 }
