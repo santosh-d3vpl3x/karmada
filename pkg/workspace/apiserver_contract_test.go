@@ -95,7 +95,7 @@ current-context: workspace
 users:
 - name: workspace
   user: {}
-`, server.URL)
+`, server.URL+workspaceProxyPath("team-a", "/"))
 	if err := os.WriteFile(kubeconfigPath, []byte(kubeconfig), 0o600); err != nil {
 		t.Fatal(err)
 	}
