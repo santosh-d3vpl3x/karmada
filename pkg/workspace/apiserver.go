@@ -264,15 +264,22 @@ func (h *workspaceProxyHandler) serveResource(rw http.ResponseWriter, req *http.
 		writeAPIError(rw, workspacestorage.NewUnsupportedRequestError(info.Resource, info.Verb))
 		return
 	}
-	if isLogicalNamespaceResource(info.Resource) {
+	route, ok := support.RouteFor(info.Resource)
+	if !ok {
+		writeAPIError(rw, workspacestorage.NewUnsupportedResourceError(info.Resource.Resource))
+		return
+	}
+
+	switch route {
+	case support.ResourceRouteLogicalNamespace:
 		h.serveLogicalNamespaces(rw, req, info)
-		return
+	case support.ResourceRouteProjectedPod, support.ResourceRouteProjectedEvent:
+		h.serveProjectedRuntime(rw, req, info, route)
+	case support.ResourceRouteDesiredState:
+		h.forwardDesiredState(rw, req, info)
+	default:
+		writeAPIError(rw, workspacestorage.NewUnsupportedResourceError(info.Resource.Resource))
 	}
-	if isProjectedRuntimeResource(info.Resource) {
-		h.serveProjectedRuntime(rw, req, info)
-		return
-	}
-	h.forwardDesiredState(rw, req, info)
 }
 
 func (h *workspaceProxyHandler) serveSubresource(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo, responder rest.Responder) {
@@ -354,16 +361,16 @@ func (h *workspaceProxyHandler) lookupLogicalNamespace(ctx context.Context, info
 	return nil, apierrors.NewNotFound(corev1.Resource("namespaces"), info.Name)
 }
 
-func (h *workspaceProxyHandler) serveProjectedRuntime(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo) {
+func (h *workspaceProxyHandler) serveProjectedRuntime(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo, route support.ResourceRoute) {
 	ctx := req.Context()
 	if info.Namespace != "" {
 		ctx = genericrequest.WithNamespace(ctx, info.Namespace)
 	}
 
-	switch info.Resource {
-	case corev1.SchemeGroupVersion.WithResource("pods"):
+	switch route {
+	case support.ResourceRouteProjectedPod:
 		h.serveProjectedStorage(rw, ctx, info, workspacestorage.NewProjectedPodREST(h.runtimeState))
-	case corev1.SchemeGroupVersion.WithResource("events"):
+	case support.ResourceRouteProjectedEvent:
 		h.serveProjectedStorage(rw, ctx, info, workspacestorage.NewProjectedEventREST(h.runtimeState))
 	default:
 		writeAPIError(rw, workspacestorage.NewUnsupportedResourceError(info.Resource.Resource))
@@ -809,10 +816,6 @@ func (info *workspaceRequestInfo) PathResource() string {
 	return path.Join("namespaces", info.Namespace, info.Resource.Resource, info.Name)
 }
 
-func isLogicalNamespaceResource(resource schema.GroupVersionResource) bool {
-	return resource == corev1.SchemeGroupVersion.WithResource("namespaces")
-}
-
 func requestVerb(method string, hasName, hasSubresource, isWatch bool) string {
 	if hasSubresource {
 		return "connect"
@@ -910,11 +913,6 @@ func requiresDesiredStateCompilation(verb string) bool {
 	default:
 		return false
 	}
-}
-
-func isProjectedRuntimeResource(resource schema.GroupVersionResource) bool {
-	mode, ok := support.ModeFor(resource)
-	return ok && mode == support.ResourceModeProjectedRuntime
 }
 
 func writeJSON(rw http.ResponseWriter, statusCode int, object any) {

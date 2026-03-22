@@ -169,6 +169,36 @@ func TestModeForReturnsConfiguredResourceMode(t *testing.T) {
 	}
 }
 
+func TestRouteForReturnsConfiguredResourceRoute(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource schema.GroupVersionResource
+		route    ResourceRoute
+		ok       bool
+	}{
+		{name: "namespace", resource: corev1.SchemeGroupVersion.WithResource("namespaces"), route: ResourceRouteLogicalNamespace, ok: true},
+		{name: "pod", resource: corev1.SchemeGroupVersion.WithResource("pods"), route: ResourceRouteProjectedPod, ok: true},
+		{name: "event", resource: corev1.SchemeGroupVersion.WithResource("events"), route: ResourceRouteProjectedEvent, ok: true},
+		{name: "deployment", resource: appsv1.SchemeGroupVersion.WithResource("deployments"), route: ResourceRouteDesiredState, ok: true},
+		{name: "node", resource: corev1.SchemeGroupVersion.WithResource("nodes"), ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route, ok := RouteFor(tt.resource)
+			if ok != tt.ok {
+				t.Fatalf("got ok=%t, want %t", ok, tt.ok)
+			}
+			if !tt.ok {
+				return
+			}
+			if route != tt.route {
+				t.Fatalf("got route %q, want %q", route, tt.route)
+			}
+		})
+	}
+}
+
 func TestDefaultCatalogDoesNotAdvertiseDeferredPhase3Resources(t *testing.T) {
 	catalog := DefaultCatalog()
 

@@ -37,10 +37,20 @@ const (
 	ResourceModeLogicalClusterView ResourceMode = "LogicalClusterView"
 )
 
+type ResourceRoute string
+
+const (
+	ResourceRouteDesiredState     ResourceRoute = "DesiredState"
+	ResourceRouteLogicalNamespace ResourceRoute = "LogicalNamespace"
+	ResourceRouteProjectedPod     ResourceRoute = "ProjectedPod"
+	ResourceRouteProjectedEvent   ResourceRoute = "ProjectedEvent"
+)
+
 type CatalogEntry struct {
 	Resource   schema.GroupVersionResource
 	Capability Capability
 	Mode       ResourceMode
+	Route      ResourceRoute
 }
 
 type Catalog struct {
@@ -48,26 +58,26 @@ type Catalog struct {
 }
 
 var defaultCatalog = newCatalog([]CatalogEntry{
-	{Resource: corev1.SchemeGroupVersion.WithResource("namespaces"), Capability: newCapability(true, true, true), Mode: ResourceModeLogicalClusterView},
-	{Resource: corev1.SchemeGroupVersion.WithResource("configmaps"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("secrets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("serviceaccounts"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("limitranges"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("resourcequotas"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: rbacv1.SchemeGroupVersion.WithResource("roles"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: rbacv1.SchemeGroupVersion.WithResource("rolebindings"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: networkingv1.SchemeGroupVersion.WithResource("networkpolicies"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: networkingv1.SchemeGroupVersion.WithResource("ingresses"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("services"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: appsv1.SchemeGroupVersion.WithResource("deployments"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: appsv1.SchemeGroupVersion.WithResource("statefulsets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: appsv1.SchemeGroupVersion.WithResource("daemonsets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: batchv1.SchemeGroupVersion.WithResource("jobs"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: batchv1.SchemeGroupVersion.WithResource("cronjobs"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState},
-	{Resource: corev1.SchemeGroupVersion.WithResource("pods"), Capability: newCapability(true, false, true, "logs", "exec", "attach", "portforward"), Mode: ResourceModeProjectedRuntime},
-	{Resource: corev1.SchemeGroupVersion.WithResource("events"), Capability: newCapability(true, false, true), Mode: ResourceModeProjectedRuntime},
+	{Resource: corev1.SchemeGroupVersion.WithResource("namespaces"), Capability: newCapability(true, true, true), Mode: ResourceModeLogicalClusterView, Route: ResourceRouteLogicalNamespace},
+	{Resource: corev1.SchemeGroupVersion.WithResource("configmaps"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("secrets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("serviceaccounts"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("limitranges"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("resourcequotas"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: rbacv1.SchemeGroupVersion.WithResource("roles"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: rbacv1.SchemeGroupVersion.WithResource("rolebindings"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: networkingv1.SchemeGroupVersion.WithResource("networkpolicies"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: networkingv1.SchemeGroupVersion.WithResource("ingresses"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("services"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: appsv1.SchemeGroupVersion.WithResource("deployments"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: appsv1.SchemeGroupVersion.WithResource("statefulsets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: appsv1.SchemeGroupVersion.WithResource("daemonsets"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: batchv1.SchemeGroupVersion.WithResource("jobs"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: batchv1.SchemeGroupVersion.WithResource("cronjobs"), Capability: newCapability(true, true, true), Mode: ResourceModeDesiredState, Route: ResourceRouteDesiredState},
+	{Resource: corev1.SchemeGroupVersion.WithResource("pods"), Capability: newCapability(true, false, true, "logs", "exec", "attach", "portforward"), Mode: ResourceModeProjectedRuntime, Route: ResourceRouteProjectedPod},
+	{Resource: corev1.SchemeGroupVersion.WithResource("events"), Capability: newCapability(true, false, true), Mode: ResourceModeProjectedRuntime, Route: ResourceRouteProjectedEvent},
 })
 
 func DefaultCatalog() Catalog {
@@ -129,6 +139,14 @@ func ModeFor(resource schema.GroupVersionResource) (ResourceMode, bool) {
 		return "", false
 	}
 	return entry.Mode, true
+}
+
+func RouteFor(resource schema.GroupVersionResource) (ResourceRoute, bool) {
+	entry, ok := defaultCatalog.Entry(resource)
+	if !ok {
+		return "", false
+	}
+	return entry.Route, true
 }
 
 func newCatalog(entries []CatalogEntry) Catalog {
