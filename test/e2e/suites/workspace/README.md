@@ -1,6 +1,6 @@
 # Workspace E2E
 
-This suite exercises the phase-1 workspace compatibility surface through a generated workspace kubeconfig created by `karmadactl workspace kubeconfig`.
+This suite exercises the workspace compatibility surface through a generated workspace kubeconfig created by `karmadactl workspace kubeconfig`.
 
 ## Automated Coverage
 
@@ -9,7 +9,7 @@ The suite is intentionally honest about environmental readiness.
 - `go test ./test/e2e/suites/workspace -count=1` verifies the suite compiles and skips cleanly when the current cluster does not expose a workspace-capable endpoint.
 - `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m` runs the kubectl compatibility checks when the environment can actually serve the workspace surface exercised by this branch.
 
-The automated suite covers:
+The automated suite covers the phase-1 baseline plus the currently implemented Phase-2 debug additions:
 
 - workspace kubeconfig generation through `karmadactl workspace kubeconfig`
 - `kubectl api-resources` over the supported phase-1 surface only
