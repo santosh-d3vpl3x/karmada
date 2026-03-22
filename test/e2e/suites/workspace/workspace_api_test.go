@@ -479,6 +479,20 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 		gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), deleteOutput)
 	})
 
+	ginkgo.It("exposes placementviews as a read-only debug surface", func() {
+		podName := waitForWorkspacePodName(harness)
+
+		resp, err := controlPlaneRawGET(fmt.Sprintf("apis/workspace.karmada.io/v1alpha1/placementviews/%s.%s", harness.Namespace, podName))
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+		defer resp.Body.Close()
+		gomega.Expect(resp.StatusCode).Should(gomega.Equal(200))
+
+		view := decodePlacementViewResponse(resp)
+		gomega.Expect(view.Status.SubjectRef.Namespace).Should(gomega.Equal(harness.Namespace))
+		gomega.Expect(view.Status.SubjectRef.Name).Should(gomega.Equal(podName))
+		gomega.Expect(view.Status.EligibleClusters).ShouldNot(gomega.BeEmpty())
+	})
+
 	ginkgo.It("supports kubectl get pods, get events, and get -w on supported resources", func() {
 		podName := waitForWorkspacePodName(harness)
 

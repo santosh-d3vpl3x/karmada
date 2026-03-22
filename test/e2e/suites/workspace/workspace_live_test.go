@@ -19,6 +19,7 @@ package workspace
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -30,6 +31,8 @@ import (
 	"github.com/onsi/gomega"
 	"k8s.io/client-go/rest"
 
+	workspacev1alpha1 "github.com/karmada-io/karmada/pkg/apis/workspace/v1alpha1"
+	workspacelive "github.com/karmada-io/karmada/pkg/workspace/live"
 	"github.com/karmada-io/karmada/test/e2e/framework"
 )
 
@@ -38,7 +41,18 @@ func workspaceRawGET(access framework.WorkspaceAccess, path string) (*http.Respo
 	if err != nil {
 		return nil, err
 	}
+	return rawGET(config, path)
+}
 
+func controlPlaneRawGET(path string) (*http.Response, error) {
+	config, err := framework.LoadRESTClientConfig(kubeconfig, karmadaContext)
+	if err != nil {
+		return nil, err
+	}
+	return rawGET(config, path)
+}
+
+func rawGET(config *rest.Config, path string) (*http.Response, error) {
 	transport, err := rest.TransportFor(config)
 	if err != nil {
 		return nil, err
@@ -47,6 +61,31 @@ func workspaceRawGET(access framework.WorkspaceAccess, path string) (*http.Respo
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 	url := strings.TrimSuffix(config.Host, "/") + "/" + strings.TrimPrefix(path, "/")
 	return client.Get(url)
+}
+
+func readWorkspaceResponseBody(resp *http.Response) string {
+	body, err := io.ReadAll(resp.Body)
+	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+	return string(body)
+}
+
+func inspectWorkspaceLiveTargets(access framework.WorkspaceAccess, namespace, podName string) workspacelive.Inspection {
+	resp, err := workspaceRawGET(access, fmt.Sprintf("api/v1/namespaces/%s/pods/%s/logs?inspect=1", namespace, podName))
+	gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+	defer resp.Body.Close()
+	body := readWorkspaceResponseBody(resp)
+	gomega.Expect(resp.StatusCode).Should(gomega.Equal(http.StatusOK), body)
+
+	inspection := workspacelive.Inspection{}
+	gomega.Expect(json.Unmarshal([]byte(body), &inspection)).ShouldNot(gomega.HaveOccurred(), body)
+	return inspection
+}
+
+func decodePlacementViewResponse(resp *http.Response) workspacev1alpha1.PlacementView {
+	body := readWorkspaceResponseBody(resp)
+	view := workspacev1alpha1.PlacementView{}
+	gomega.Expect(json.Unmarshal([]byte(body), &view)).ShouldNot(gomega.HaveOccurred(), body)
+	return view
 }
 
 var _ = ginkgo.Describe("Workspace Live Access", ginkgo.Ordered, func() {
@@ -124,7 +163,7 @@ var _ = ginkgo.Describe("Workspace Live Access", ginkgo.Ordered, func() {
 		_ = cmd.Wait()
 	})
 
-	ginkgo.It("returns 409 Conflict for ambiguous live targets when a target is supplied", func() {
+	ginkgo.It("returns 409 Conflict for ambiguous live targets when a target is not supplied", func() {
 		ambiguousPod := strings.TrimSpace(os.Getenv("WORKSPACE_E2E_AMBIGUOUS_POD"))
 		if ambiguousPod == "" {
 			ginkgo.Skip("WORKSPACE_E2E_AMBIGUOUS_POD is not set")
@@ -134,5 +173,34 @@ var _ = ginkgo.Describe("Workspace Live Access", ginkgo.Ordered, func() {
 		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
 		defer resp.Body.Close()
 		gomega.Expect(resp.StatusCode).Should(gomega.Equal(http.StatusConflict))
+	})
+
+	ginkgo.It("reports candidate live targets through inspect=1", func() {
+		ambiguousPod := strings.TrimSpace(os.Getenv("WORKSPACE_E2E_AMBIGUOUS_POD"))
+		if ambiguousPod == "" {
+			ginkgo.Skip("WORKSPACE_E2E_AMBIGUOUS_POD is not set")
+		}
+
+		inspection := inspectWorkspaceLiveTargets(harness.Access, harness.Namespace, ambiguousPod)
+		gomega.Expect(inspection.Ambiguous).Should(gomega.BeTrue())
+		gomega.Expect(len(inspection.Candidates)).Should(gomega.BeNumerically(">=", 2))
+	})
+
+	ginkgo.It("supports explicit live target selection for ambiguous pods", func() {
+		ambiguousPod := strings.TrimSpace(os.Getenv("WORKSPACE_E2E_AMBIGUOUS_POD"))
+		if ambiguousPod == "" {
+			ginkgo.Skip("WORKSPACE_E2E_AMBIGUOUS_POD is not set")
+		}
+
+		inspection := inspectWorkspaceLiveTargets(harness.Access, harness.Namespace, ambiguousPod)
+		gomega.Expect(inspection.Candidates).ShouldNot(gomega.BeEmpty())
+
+		resp, err := workspaceRawGET(harness.Access, fmt.Sprintf("api/v1/namespaces/%s/pods/%s/logs?targetCluster=%s", harness.Namespace, ambiguousPod, inspection.Candidates[0].Cluster))
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
+		defer resp.Body.Close()
+		gomega.Expect(resp.StatusCode).Should(gomega.Equal(http.StatusOK))
+
+		body := readWorkspaceResponseBody(resp)
+		gomega.Expect(strings.TrimSpace(body)).ShouldNot(gomega.BeEmpty())
 	})
 })

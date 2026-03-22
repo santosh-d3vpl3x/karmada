@@ -7,7 +7,7 @@ This suite exercises the phase-1 workspace compatibility surface through a gener
 The suite is intentionally honest about environmental readiness.
 
 - `go test ./test/e2e/suites/workspace -count=1` verifies the suite compiles and skips cleanly when the current cluster does not expose a workspace-capable endpoint.
-- `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m` runs the kubectl compatibility checks when the environment can actually serve the phase-1 workspace surface.
+- `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m` runs the kubectl compatibility checks when the environment can actually serve the workspace surface exercised by this branch.
 
 The automated suite covers:
 
@@ -22,6 +22,9 @@ The automated suite covers:
 - `kubectl attach`
 - `kubectl port-forward`
 - `409 Conflict` behavior for ambiguous live targets when `WORKSPACE_E2E_AMBIGUOUS_POD` names a known ambiguous workspace-visible pod
+- live-target inspection through `?inspect=1` for an intentionally ambiguous pod
+- explicit live-target selection through `?targetCluster=<member>` for an intentionally ambiguous pod
+- `PlacementView` read-only debug output for a workspace-visible pod through the control-plane workspace API group
 
 ## Environment Requirements
 
@@ -31,6 +34,8 @@ The suite assumes all of the following are true:
 - `$(go env GOPATH)/bin/karmadactl` exists
 - the target environment publishes the workspace proxy endpoint and truthful phase-1 discovery
 - desired-state writes, projected runtime reads, and live pod subresources are wired in the deployed workspace apiserver
+- the control-plane kubeconfig can reach `placementviews.workspace.karmada.io` read endpoints when the phase-2 debug surface is deployed
+- `WORKSPACE_E2E_AMBIGUOUS_POD` names a known ambiguous workspace-visible pod when running the ambiguity inspection and explicit-target-selection checks
 
 If those prerequisites are not met, the suite skips instead of pretending the phase-1 surface works.
 
