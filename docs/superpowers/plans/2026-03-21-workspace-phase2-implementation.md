@@ -21,6 +21,25 @@ This plan only covers the spec's Phase 2 and deferred-work items that belong the
 
 This plan does not implement Phase 3 items such as arbitrary CRDs, arbitrary propagated resources, or full aggregated API fidelity.
 
+## Current Approved Execution Cut
+
+The Phase-2 spec is broader than the currently approved implementation slice. To avoid inventing unsupported scope, current execution on this branch is intentionally narrowed to:
+
+- explicit target-selection or inspection support for ambiguous live pod operations;
+- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification.
+
+Implemented on the current branch:
+
+- `86eea7464` `feat: add workspace live target inspection and debug views`
+- `843422d81` `test: cover workspace phase2 debug e2e`
+
+Still Phase-2 roadmap items, but not yet approved for implementation on this branch:
+
+- additional built-in namespaced resources;
+- selected cluster-scoped views with clear logical semantics.
+
+Those remaining items require an explicit resource list decision before implementation so discovery and advertised support remain truthful.
+
 ## File Structure
 
 ### Existing files to modify

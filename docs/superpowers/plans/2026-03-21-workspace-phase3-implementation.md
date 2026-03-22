@@ -21,6 +21,15 @@ This plan only covers the spec's Phase 3 and deferred-work items that belong the
 
 This plan does not revisit the giant-cluster model or split desired-state ownership away from Karmada.
 
+## Current Planning Note
+
+Current branch history includes the narrowed Phase-2 debug slice only:
+
+- explicit target-selection or inspection support for ambiguous live pod operations;
+- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification.
+
+This Phase-3 plan should not be read as assuming that broader Phase-2 resource-surface work is already complete. Remaining Phase-2 items such as additional built-in namespaced resources and selected cluster-scoped views still need their own explicit approval and execution before any Phase-3 rollout should claim to build on them.
+
 ## File Structure
 
 ### Existing files to modify
