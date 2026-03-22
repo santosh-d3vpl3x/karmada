@@ -136,6 +136,20 @@ func waitForWorkspaceKubectl(h *workspaceHarness, timeout time.Duration, args ..
 	return last, false
 }
 
+func waitForWorkspaceKubectlFailure(h *workspaceHarness, timeout time.Duration, args ...string) (string, bool) {
+	deadline := time.Now().Add(timeout)
+	var last string
+	for time.Now().Before(deadline) {
+		output, err := framework.RunWorkspaceKubectl(h.Access.KubeconfigPath, args...)
+		last = output
+		if err != nil {
+			return output, true
+		}
+		time.Sleep(pollInterval)
+	}
+	return last, false
+}
+
 func waitForWorkspacePodName(h *workspaceHarness) string {
 	deadline := time.Now().Add(pollTimeout)
 	for time.Now().Before(deadline) {
@@ -445,6 +459,25 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 		output, ok := waitForWorkspaceKubectl(harness, pollTimeout, "get", "namespace", harness.Namespace, "-o", "name")
 		if !ok {
 			ginkgo.Skip(fmt.Sprintf("workspace logical namespaces are not available in the current environment: %s", strings.TrimSpace(output)))
+		}
+		gomega.Expect(strings.TrimSpace(output)).Should(gomega.Equal("namespace/" + harness.Namespace))
+	})
+
+	ginkgo.It("supports namespace delete and recreate through the workspace API", func() {
+		deleteOutput, err := framework.RunWorkspaceKubectl(harness.Access.KubeconfigPath, "delete", "namespace", harness.Namespace, "--ignore-not-found")
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), deleteOutput)
+
+		output, deleted := waitForWorkspaceKubectlFailure(harness, pollTimeout, "get", "namespace", harness.Namespace, "-o", "name")
+		if !deleted {
+			ginkgo.Skip(fmt.Sprintf("workspace namespace deletion is not observable in the current environment: %s", strings.TrimSpace(output)))
+		}
+
+		createOutput, err := applyWorkspaceManifest(harness, workspaceNamespaceManifest(harness.Namespace))
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), createOutput)
+
+		output, ok := waitForWorkspaceKubectl(harness, pollTimeout, "get", "namespace", harness.Namespace, "-o", "name")
+		if !ok {
+			ginkgo.Skip(fmt.Sprintf("workspace namespace recreation is not available in the current environment: %s", strings.TrimSpace(output)))
 		}
 		gomega.Expect(strings.TrimSpace(output)).Should(gomega.Equal("namespace/" + harness.Namespace))
 	})

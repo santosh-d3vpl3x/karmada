@@ -716,9 +716,15 @@ func (info *workspaceRequestInfo) APIGroupVersion() string {
 
 func (info *workspaceRequestInfo) PathResource() string {
 	if info.Namespace == "" {
-		return info.Resource.Resource
+		if info.Name == "" {
+			return info.Resource.Resource
+		}
+		return path.Join(info.Resource.Resource, info.Name)
 	}
-	return path.Join("namespaces", info.Namespace, info.Resource.Resource)
+	if info.Name == "" {
+		return path.Join("namespaces", info.Namespace, info.Resource.Resource)
+	}
+	return path.Join("namespaces", info.Namespace, info.Resource.Resource, info.Name)
 }
 
 func isLogicalNamespaceResource(resource schema.GroupVersionResource) bool {

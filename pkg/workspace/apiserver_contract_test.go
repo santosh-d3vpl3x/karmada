@@ -202,6 +202,96 @@ func TestWorkspaceNamespaceWriteContract(t *testing.T) {
 	}
 }
 
+func TestWorkspaceNamespaceUpdateContract(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPut {
+			t.Fatalf("got method %q", req.Method)
+		}
+		if req.URL.Path != "/api/v1/namespaces/demo" {
+			t.Fatalf("got path %q", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = req.Body.Close()
+
+		forwarded := &corev1.Namespace{}
+		if err := json.Unmarshal(body, forwarded); err != nil {
+			t.Fatal(err)
+		}
+		if forwarded.Annotations[facade.AnnotationWorkspaceName] != "team-a" {
+			t.Fatalf("missing workspace annotation: %#v", forwarded.Annotations)
+		}
+		if forwarded.Labels[facade.LabelWorkspaceName] != "team-a" {
+			t.Fatalf("missing workspace label: %#v", forwarded.Labels)
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(rw).Encode(forwarded)
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{
+		runtimeState:     defaultRuntimeState(),
+		backendURL:       backendURL,
+		backendTransport: backend.Client().Transport,
+	})
+
+	namespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
+	}
+	body, err := json.Marshal(&namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSONRequest(t, server, http.MethodPut, workspaceProxyPath("team-a", "/api/v1/namespaces/demo"), body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
+func TestWorkspaceNamespaceDeleteContract(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodDelete {
+			t.Fatalf("got method %q", req.Method)
+		}
+		if req.URL.Path != "/api/v1/namespaces/demo" {
+			t.Fatalf("got path %q", req.URL.Path)
+		}
+		rw.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(rw).Encode(&metav1.Status{
+			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+			Status:   metav1.StatusSuccess,
+			Code:     http.StatusOK,
+		})
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{
+		runtimeState:     defaultRuntimeState(),
+		backendURL:       backendURL,
+		backendTransport: backend.Client().Transport,
+	})
+
+	resp := doRequest(t, server, http.MethodDelete, workspaceProxyPath("team-a", "/api/v1/namespaces/demo"), nil, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
 func TestWorkspaceNamespaceGetHonorsWorkspaceScope(t *testing.T) {
 	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
 		rw.Header().Set("Content-Type", "application/json")
