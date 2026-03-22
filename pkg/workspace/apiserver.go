@@ -29,9 +29,12 @@ import (
 	"strings"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -58,10 +61,13 @@ import (
 const componentName = "karmada-workspace-apiserver"
 
 var (
-	coreV1       = schema.GroupVersion{Version: "v1"}
-	appsV1       = appsv1.SchemeGroupVersion
-	batchV1      = batchv1.SchemeGroupVersion
-	networkingV1 = networkingv1.SchemeGroupVersion
+	coreV1        = schema.GroupVersion{Version: "v1"}
+	appsV1        = appsv1.SchemeGroupVersion
+	batchV1       = batchv1.SchemeGroupVersion
+	networkingV1  = networkingv1.SchemeGroupVersion
+	policyV1      = policyv1.SchemeGroupVersion
+	rbacV1        = rbacv1.SchemeGroupVersion
+	autoscalingV2 = autoscalingv2.SchemeGroupVersion
 )
 
 // RequestAuthorizer authorizes one nested workspace request.
@@ -232,8 +238,11 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroupList"},
 			Groups: []metav1.APIGroup{
 				workspaceAPIGroup(appsV1),
+				workspaceAPIGroup(autoscalingV2),
 				workspaceAPIGroup(batchV1),
 				workspaceAPIGroup(networkingV1),
+				workspaceAPIGroup(policyV1),
+				workspaceAPIGroup(rbacV1),
 			},
 		})
 	case info.Path == "/apis/apps":
@@ -246,6 +255,14 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 		})
 	case info.Path == "/apis/batch":
 		writeJSON(rw, http.StatusOK, workspaceAPIGroup(batchV1))
+	case info.Path == "/apis/autoscaling":
+		writeJSON(rw, http.StatusOK, workspaceAPIGroup(autoscalingV2))
+	case info.Path == "/apis/autoscaling/v2":
+		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
+			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+			GroupVersion: autoscalingV2.String(),
+			APIResources: discoveryResourcesFor(autoscalingV2),
+		})
 	case info.Path == "/apis/batch/v1":
 		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
 			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
@@ -259,6 +276,22 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
 			GroupVersion: networkingV1.String(),
 			APIResources: discoveryResourcesFor(networkingV1),
+		})
+	case info.Path == "/apis/policy":
+		writeJSON(rw, http.StatusOK, workspaceAPIGroup(policyV1))
+	case info.Path == "/apis/policy/v1":
+		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
+			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+			GroupVersion: policyV1.String(),
+			APIResources: discoveryResourcesFor(policyV1),
+		})
+	case info.Path == "/apis/rbac.authorization.k8s.io":
+		writeJSON(rw, http.StatusOK, workspaceAPIGroup(rbacV1))
+	case info.Path == "/apis/rbac.authorization.k8s.io/v1":
+		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
+			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+			GroupVersion: rbacV1.String(),
+			APIResources: discoveryResourcesFor(rbacV1),
 		})
 	default:
 		writeAPIError(rw, apierrors.NewNotFound(schema.GroupResource{}, info.Path))
@@ -674,6 +707,10 @@ func singularNameFor(gvr schema.GroupVersionResource) string {
 	switch gvr.Resource {
 	case "configmaps":
 		return "configmap"
+	case "networkpolicies":
+		return "networkpolicy"
+	case "ingresses":
+		return "ingress"
 	case "daemonsets":
 		return "daemonset"
 	case "statefulsets":
@@ -699,8 +736,22 @@ func kindFor(gvr schema.GroupVersionResource) string {
 		return "Secret"
 	case corev1.SchemeGroupVersion.WithResource("serviceaccounts"):
 		return "ServiceAccount"
+	case corev1.SchemeGroupVersion.WithResource("limitranges"):
+		return "LimitRange"
+	case corev1.SchemeGroupVersion.WithResource("resourcequotas"):
+		return "ResourceQuota"
 	case networkingv1.SchemeGroupVersion.WithResource("networkpolicies"):
 		return "NetworkPolicy"
+	case networkingv1.SchemeGroupVersion.WithResource("ingresses"):
+		return "Ingress"
+	case rbacv1.SchemeGroupVersion.WithResource("roles"):
+		return "Role"
+	case rbacv1.SchemeGroupVersion.WithResource("rolebindings"):
+		return "RoleBinding"
+	case policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets"):
+		return "PodDisruptionBudget"
+	case autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers"):
+		return "HorizontalPodAutoscaler"
 	case corev1.SchemeGroupVersion.WithResource("services"):
 		return "Service"
 	case corev1.SchemeGroupVersion.WithResource("pods"):

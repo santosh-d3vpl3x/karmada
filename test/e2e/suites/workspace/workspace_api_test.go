@@ -83,7 +83,14 @@ func supportedWorkspaceAPIResources() []string {
 		"events",
 		"jobs.batch",
 		"namespaces",
+		"horizontalpodautoscalers.autoscaling",
+		"ingresses.networking.k8s.io",
+		"limitranges",
 		"networkpolicies.networking.k8s.io",
+		"poddisruptionbudgets.policy",
+		"resourcequotas",
+		"rolebindings.rbac.authorization.k8s.io",
+		"roles.rbac.authorization.k8s.io",
 		"pods",
 		"pods/attach",
 		"pods/exec",
@@ -211,6 +218,100 @@ spec:
   podSelector: {}
   policyTypes:
   - Ingress
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: workspace-defaults
+  namespace: %s
+spec:
+  limits:
+  - type: Container
+    default:
+      cpu: 500m
+      memory: 256Mi
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: workspace-quota
+  namespace: %s
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 2Gi
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: workspace-reader
+  namespace: %s
+rules:
+- apiGroups: [""]
+  resources: ["configmaps"]
+  verbs: ["get", "list"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: workspace-reader
+  namespace: %s
+subjects:
+- kind: ServiceAccount
+  name: workspace-builder
+  namespace: %s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: workspace-reader
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: workspace-http
+  namespace: %s
+spec:
+  rules:
+  - http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: workspace-service
+            port:
+              number: 8080
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: workspace-demo
+  namespace: %s
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: workspace-demo
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: workspace-demo
+  namespace: %s
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: workspace-demo
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 80
 ---
 apiVersion: v1
 kind: Service
@@ -342,7 +443,7 @@ spec:
           - name: app
             image: busybox:1.36.0
             command: ["sh", "-c", "echo workspace-cron"]
-`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
+`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
 }
 
 func workspaceWritableUpdateManifest(namespace string) string {
@@ -513,7 +614,14 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 			{"get", "configmap", "workspace-config", "-n", harness.Namespace, "-o", "jsonpath={.data.mode}"},
 			{"get", "secret", "workspace-secret", "-n", harness.Namespace, "-o", "jsonpath={.data.token}"},
 			{"get", "serviceaccount", "workspace-builder", "-n", harness.Namespace, "-o", "name"},
+			{"get", "limitrange", "workspace-defaults", "-n", harness.Namespace, "-o", "name"},
+			{"get", "resourcequota", "workspace-quota", "-n", harness.Namespace, "-o", "name"},
+			{"get", "role", "workspace-reader", "-n", harness.Namespace, "-o", "name"},
+			{"get", "rolebinding", "workspace-reader", "-n", harness.Namespace, "-o", "name"},
 			{"get", "networkpolicy", "workspace-deny", "-n", harness.Namespace, "-o", "name"},
+			{"get", "ingress", "workspace-http", "-n", harness.Namespace, "-o", "name"},
+			{"get", "poddisruptionbudget", "workspace-demo", "-n", harness.Namespace, "-o", "name"},
+			{"get", "horizontalpodautoscaler", "workspace-demo", "-n", harness.Namespace, "-o", "name"},
 			{"get", "service", "workspace-service", "-n", harness.Namespace, "-o", "name"},
 			{"get", "deployment", "workspace-demo", "-n", harness.Namespace, "-o", "name"},
 			{"get", "statefulset", "workspace-stateful", "-n", harness.Namespace, "-o", "name"},

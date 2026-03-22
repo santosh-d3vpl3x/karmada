@@ -21,31 +21,29 @@ This plan only covers the spec's Phase 2 and deferred-work items that belong the
 
 This plan does not implement Phase 3 items such as arbitrary CRDs, arbitrary propagated resources, or full aggregated API fidelity.
 
-## Current Approved Execution Cut
+## Current Branch Status
 
-The Phase-2 spec is broader than the currently approved implementation slice. To avoid inventing unsupported scope, current execution on this branch is intentionally narrowed to:
+Phase 2 is complete on the current branch.
+
+Implemented Phase-2 scope now includes:
 
 - explicit target-selection or inspection support for ambiguous live pod operations;
-- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification.
+- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification;
+- the selected cluster-scoped logical namespace view, with truthful workspace-scoped reads and preserved namespace CRUD semantics;
+- additional built-in namespaced resources that fit the existing desired-state model without Phase-3-only semantics:
+  - `serviceaccounts`
+  - `networkpolicies`
+  - `limitranges`
+  - `resourcequotas`
+  - `roles`
+  - `rolebindings`
+  - `ingresses`
+  - `poddisruptionbudgets`
+  - `horizontalpodautoscalers`
 
-Implemented on the current branch:
+The namespace follow-up commits on this branch remain Phase-1 contract repairs rather than separate Phase-2 roadmap items, but they are part of the stable baseline that Phase 2 now builds on.
 
-- `86eea7464` `feat: add workspace live target inspection and debug views`
-- `843422d81` `test: cover workspace phase2 debug e2e`
-
-Also present on the current branch, but not part of the Phase-2 scope decision itself:
-
-- `b6bd40998` `fix: restore workspace namespace CRUD contract`
-- `3fa20b6e2` `fix: cover named workspace namespace writes`
-
-Those follow-up commits repair and verify the Phase-1 namespace contract; they should not be mistaken for completion of the remaining Phase-2 resource-surface roadmap.
-
-Still Phase-2 roadmap items, but not yet approved for implementation on this branch:
-
-- additional built-in namespaced resources;
-- selected cluster-scoped views with clear logical semantics.
-
-Those remaining items require an explicit resource list decision before implementation so discovery and advertised support remain truthful.
+This file is now best read as the historical execution plan that produced the completed Phase-2 branch state, not as an open scope-decision document.
 
 ## File Structure
 

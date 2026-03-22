@@ -71,17 +71,24 @@ func TestWorkspaceAPIServerRootDiscoveryAdvertisesWorkspaceResources(t *testing.
 func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
 
+	groups := discoverAPIGroups(t, server, workspaceProxyPath("team-a", "/apis"))
+	for _, name := range []string{"apps", "autoscaling", "batch", "networking.k8s.io", "policy", "rbac.authorization.k8s.io"} {
+		if !containsGroup(groups, name) {
+			t.Fatalf("expected %s in workspace api group discovery", name)
+		}
+	}
+
 	coreResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/api/v1"))
 	if containsResource(coreResources, "nodes") {
-		t.Fatal("did not expect nodes in phase-1 discovery")
+		t.Fatal("did not expect nodes in workspace discovery")
 	}
-	for _, name := range []string{"namespaces", "configmaps", "secrets", "serviceaccounts", "services", "pods", "events"} {
+	for _, name := range []string{"namespaces", "configmaps", "secrets", "serviceaccounts", "limitranges", "resourcequotas", "services", "pods", "events"} {
 		if !containsResource(coreResources, name) {
 			t.Fatalf("expected %s in workspace core discovery", name)
 		}
 	}
 	if containsResource(coreResources, "pods/proxy") {
-		t.Fatal("did not expect pods/proxy in phase-1 discovery")
+		t.Fatal("did not expect pods/proxy in workspace discovery")
 	}
 
 	appsResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/apps/v1"))
@@ -91,9 +98,49 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 		}
 	}
 
+	batchResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/batch/v1"))
+	for _, name := range []string{"jobs", "cronjobs"} {
+		if !containsResource(batchResources, name) {
+			t.Fatalf("expected %s in workspace batch discovery", name)
+		}
+	}
+
 	networkingResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/networking.k8s.io/v1"))
-	if !containsResource(networkingResources, "networkpolicies") {
-		t.Fatal("expected networkpolicies in workspace networking discovery")
+	for _, name := range []string{"networkpolicies", "ingresses"} {
+		if !containsResource(networkingResources, name) {
+			t.Fatalf("expected %s in workspace networking discovery", name)
+		}
+	}
+	networkPolicyResource, ok := apiResourceByName(networkingResources, "networkpolicies")
+	if !ok {
+		t.Fatal("expected networkpolicies api resource")
+	}
+	if networkPolicyResource.SingularName != "networkpolicy" {
+		t.Fatalf("got networkpolicy singular name %q", networkPolicyResource.SingularName)
+	}
+	ingressResource, ok := apiResourceByName(networkingResources, "ingresses")
+	if !ok {
+		t.Fatal("expected ingresses api resource")
+	}
+	if ingressResource.SingularName != "ingress" {
+		t.Fatalf("got ingress singular name %q", ingressResource.SingularName)
+	}
+
+	rbacResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/rbac.authorization.k8s.io/v1"))
+	for _, name := range []string{"roles", "rolebindings"} {
+		if !containsResource(rbacResources, name) {
+			t.Fatalf("expected %s in workspace rbac discovery", name)
+		}
+	}
+
+	policyResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/policy/v1"))
+	if !containsResource(policyResources, "poddisruptionbudgets") {
+		t.Fatal("expected poddisruptionbudgets in workspace policy discovery")
+	}
+
+	autoscalingResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/autoscaling/v2"))
+	if !containsResource(autoscalingResources, "horizontalpodautoscalers") {
+		t.Fatal("expected horizontalpodautoscalers in workspace autoscaling discovery")
 	}
 }
 
@@ -213,6 +260,110 @@ func TestWorkspaceNetworkPolicyWriteContract(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("got %d", resp.StatusCode)
 	}
+}
+
+func TestWorkspaceRoleWriteContract(t *testing.T) {
+	assertWorkspaceWriteContract(t,
+		workspaceProxyPath("team-a", "/apis/rbac.authorization.k8s.io/v1/namespaces/default/roles"),
+		"/apis/rbac.authorization.k8s.io/v1/namespaces/default/roles",
+		map[string]any{
+			"apiVersion": "rbac.authorization.k8s.io/v1",
+			"kind":       "Role",
+			"metadata": map[string]any{
+				"name":      "workspace-reader",
+				"namespace": "default",
+			},
+			"rules": []any{map[string]any{
+				"apiGroups": []any{""},
+				"resources": []any{"configmaps"},
+				"verbs":     []any{"get", "list"},
+			}},
+		},
+	)
+}
+
+func TestWorkspaceIngressWriteContract(t *testing.T) {
+	assertWorkspaceWriteContract(t,
+		workspaceProxyPath("team-a", "/apis/networking.k8s.io/v1/namespaces/default/ingresses"),
+		"/apis/networking.k8s.io/v1/namespaces/default/ingresses",
+		map[string]any{
+			"apiVersion": "networking.k8s.io/v1",
+			"kind":       "Ingress",
+			"metadata": map[string]any{
+				"name":      "workspace-http",
+				"namespace": "default",
+			},
+			"spec": map[string]any{
+				"rules": []any{map[string]any{
+					"http": map[string]any{
+						"paths": []any{map[string]any{
+							"path":     "/",
+							"pathType": "Prefix",
+							"backend": map[string]any{
+								"service": map[string]any{
+									"name": "workspace-service",
+									"port": map[string]any{"number": 8080},
+								},
+							},
+						}},
+					},
+				}},
+			},
+		},
+	)
+}
+
+func TestWorkspacePodDisruptionBudgetWriteContract(t *testing.T) {
+	assertWorkspaceWriteContract(t,
+		workspaceProxyPath("team-a", "/apis/policy/v1/namespaces/default/poddisruptionbudgets"),
+		"/apis/policy/v1/namespaces/default/poddisruptionbudgets",
+		map[string]any{
+			"apiVersion": "policy/v1",
+			"kind":       "PodDisruptionBudget",
+			"metadata": map[string]any{
+				"name":      "workspace-demo",
+				"namespace": "default",
+			},
+			"spec": map[string]any{
+				"minAvailable": 1,
+				"selector":     map[string]any{"matchLabels": map[string]any{"app": "workspace-demo"}},
+			},
+		},
+	)
+}
+
+func TestWorkspaceHorizontalPodAutoscalerWriteContract(t *testing.T) {
+	assertWorkspaceWriteContract(t,
+		workspaceProxyPath("team-a", "/apis/autoscaling/v2/namespaces/default/horizontalpodautoscalers"),
+		"/apis/autoscaling/v2/namespaces/default/horizontalpodautoscalers",
+		map[string]any{
+			"apiVersion": "autoscaling/v2",
+			"kind":       "HorizontalPodAutoscaler",
+			"metadata": map[string]any{
+				"name":      "workspace-demo",
+				"namespace": "default",
+			},
+			"spec": map[string]any{
+				"scaleTargetRef": map[string]any{
+					"apiVersion": "apps/v1",
+					"kind":       "Deployment",
+					"name":       "workspace-demo",
+				},
+				"minReplicas": 1,
+				"maxReplicas": 3,
+				"metrics": []any{map[string]any{
+					"type": "Resource",
+					"resource": map[string]any{
+						"name": "cpu",
+						"target": map[string]any{
+							"type":               "Utilization",
+							"averageUtilization": 80,
+						},
+					},
+				}},
+			},
+		},
+	)
 }
 
 func TestWorkspaceNamespaceDiscoveryAdvertisesWritableLogicalView(t *testing.T) {
@@ -672,6 +823,97 @@ func discoverAPIResources(t *testing.T, server *httptest.Server, requestPath str
 
 func workspaceProxyPath(workspaceName, suffix string) string {
 	return "/apis/" + workspacev1alpha1.GroupName + "/" + workspacev1alpha1.GroupVersion.Version + "/workspaces/" + workspaceName + "/proxy" + suffix
+}
+
+func assertWorkspaceWriteContract(t *testing.T, requestPath, wantBackendPath string, object map[string]any) {
+	t.Helper()
+
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("got method %q", req.Method)
+		}
+		if req.URL.Path != wantBackendPath {
+			t.Fatalf("got path %q", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = req.Body.Close()
+
+		forwarded := map[string]any{}
+		if err := json.Unmarshal(body, &forwarded); err != nil {
+			t.Fatal(err)
+		}
+		assertForwardedWorkspaceMetadata(t, forwarded)
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(rw).Encode(forwarded)
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{
+		runtimeState:     defaultRuntimeState(),
+		backendURL:       backendURL,
+		backendTransport: backend.Client().Transport,
+	})
+
+	body, err := json.Marshal(object)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSONRequest(t, server, http.MethodPost, requestPath, body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
+func assertForwardedWorkspaceMetadata(t *testing.T, obj map[string]any) {
+	t.Helper()
+	metadata, ok := obj["metadata"].(map[string]any)
+	if !ok {
+		t.Fatalf("metadata missing: %#v", obj)
+	}
+	annotations, ok := metadata["annotations"].(map[string]any)
+	if !ok {
+		t.Fatalf("annotations missing: %#v", metadata)
+	}
+	if annotations[facade.AnnotationWorkspaceName] != "team-a" {
+		t.Fatalf("missing workspace annotation: %#v", annotations)
+	}
+	if annotations[facade.AnnotationWorkspaceResource] == "" {
+		t.Fatalf("missing workspace resource annotation: %#v", annotations)
+	}
+	labels, ok := metadata["labels"].(map[string]any)
+	if !ok {
+		t.Fatalf("labels missing: %#v", metadata)
+	}
+	if labels[facade.LabelWorkspaceName] != "team-a" {
+		t.Fatalf("missing workspace label: %#v", labels)
+	}
+}
+
+func discoverAPIGroups(t *testing.T, server *httptest.Server, requestPath string) []metav1.APIGroup {
+	t.Helper()
+	groupList := metav1.APIGroupList{}
+	decodeResponse(t, server, requestPath, &groupList)
+	return groupList.Groups
+}
+
+func containsGroup(groups []metav1.APIGroup, name string) bool {
+	for _, group := range groups {
+		if group.Name == name {
+			return true
+		}
+	}
+	return false
 }
 
 func doJSONRequest(t *testing.T, server *httptest.Server, method, requestPath string, body []byte) *http.Response {

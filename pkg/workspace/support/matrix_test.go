@@ -20,8 +20,12 @@ import (
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var deploymentsGVR = appsv1.SchemeGroupVersion.WithResource("deployments")
@@ -30,6 +34,13 @@ var namespacesGVR = corev1.SchemeGroupVersion.WithResource("namespaces")
 var podsGVR = corev1.SchemeGroupVersion.WithResource("pods")
 var serviceAccountsGVR = corev1.SchemeGroupVersion.WithResource("serviceaccounts")
 var networkPoliciesGVR = networkingv1.SchemeGroupVersion.WithResource("networkpolicies")
+var limitRangesGVR = corev1.SchemeGroupVersion.WithResource("limitranges")
+var resourceQuotasGVR = corev1.SchemeGroupVersion.WithResource("resourcequotas")
+var rolesGVR = rbacv1.SchemeGroupVersion.WithResource("roles")
+var roleBindingsGVR = rbacv1.SchemeGroupVersion.WithResource("rolebindings")
+var ingressesGVR = networkingv1.SchemeGroupVersion.WithResource("ingresses")
+var podDisruptionBudgetsGVR = policyv1.SchemeGroupVersion.WithResource("poddisruptionbudgets")
+var horizontalPodAutoscalersGVR = autoscalingv2.SchemeGroupVersion.WithResource("horizontalpodautoscalers")
 
 func TestPhase1Matrix(t *testing.T) {
 	if !Supports(deploymentsGVR, "create") {
@@ -77,40 +88,40 @@ func TestNamespaceCapabilityIsWritable(t *testing.T) {
 	}
 }
 
-func TestServiceAccountCapabilityIsWritable(t *testing.T) {
-	capability, ok := CapabilityFor(serviceAccountsGVR)
-	if !ok {
-		t.Fatal("expected serviceaccount capability")
+func TestAdditionalPhase2CapabilitiesAreWritable(t *testing.T) {
+	tests := []struct {
+		name string
+		gvr  schema.GroupVersionResource
+	}{
+		{name: "serviceaccount", gvr: serviceAccountsGVR},
+		{name: "networkpolicy", gvr: networkPoliciesGVR},
+		{name: "limitrange", gvr: limitRangesGVR},
+		{name: "resourcequota", gvr: resourceQuotasGVR},
+		{name: "role", gvr: rolesGVR},
+		{name: "rolebinding", gvr: roleBindingsGVR},
+		{name: "ingress", gvr: ingressesGVR},
+		{name: "poddisruptionbudget", gvr: podDisruptionBudgetsGVR},
+		{name: "horizontalpodautoscaler", gvr: horizontalPodAutoscalersGVR},
 	}
-	if !capability.Read {
-		t.Fatal("expected serviceaccount read support")
-	}
-	if !capability.Watch {
-		t.Fatal("expected serviceaccount watch support")
-	}
-	if !capability.Write {
-		t.Fatal("expected serviceaccount write support")
-	}
-	if !Supports(serviceAccountsGVR, "create") {
-		t.Fatal("expected serviceaccount create support")
-	}
-}
 
-func TestNetworkPolicyCapabilityIsWritable(t *testing.T) {
-	capability, ok := CapabilityFor(networkPoliciesGVR)
-	if !ok {
-		t.Fatal("expected networkpolicy capability")
-	}
-	if !capability.Read {
-		t.Fatal("expected networkpolicy read support")
-	}
-	if !capability.Watch {
-		t.Fatal("expected networkpolicy watch support")
-	}
-	if !capability.Write {
-		t.Fatal("expected networkpolicy write support")
-	}
-	if !Supports(networkPoliciesGVR, "create") {
-		t.Fatal("expected networkpolicy create support")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			capability, ok := CapabilityFor(tt.gvr)
+			if !ok {
+				t.Fatalf("expected %s capability", tt.name)
+			}
+			if !capability.Read {
+				t.Fatalf("expected %s read support", tt.name)
+			}
+			if !capability.Watch {
+				t.Fatalf("expected %s watch support", tt.name)
+			}
+			if !capability.Write {
+				t.Fatalf("expected %s write support", tt.name)
+			}
+			if !Supports(tt.gvr, "create") {
+				t.Fatalf("expected %s create support", tt.name)
+			}
+		})
 	}
 }

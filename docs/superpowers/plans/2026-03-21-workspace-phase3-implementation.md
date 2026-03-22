@@ -21,33 +21,18 @@ This plan only covers the spec's Phase 3 and deferred-work items that belong the
 
 This plan does not revisit the giant-cluster model or split desired-state ownership away from Karmada.
 
-## Current Planning Note
+## Current Baseline
 
-Current branch history includes the narrowed Phase-2 debug slice:
+Current branch history now includes a completed Phase-2 baseline:
 
 - explicit target-selection or inspection support for ambiguous live pod operations;
-- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification.
+- stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification;
+- the selected cluster-scoped logical namespace view;
+- broader built-in namespaced coverage through `serviceaccounts`, `networkpolicies`, `limitranges`, `resourcequotas`, `roles`, `rolebindings`, `ingresses`, `poddisruptionbudgets`, and `horizontalpodautoscalers`.
 
-Current branch history also includes Phase-1 follow-up repair work after the initial rollout:
+Current branch history also includes the Phase-1 namespace follow-up repairs that restored and verified the namespace CRUD contract.
 
-- restoration of the workspace namespace CRUD contract;
-- added coverage for named namespace update and delete forwarding.
-
-This Phase-3 plan should not be read as assuming that broader Phase-2 resource-surface work is already complete. Those Phase-1 follow-up fixes improve the baseline contract only; they do not satisfy the remaining Phase-2 roadmap items such as additional built-in namespaced resources and selected cluster-scoped views.
-
-## Explicit Carry-Forward From Incomplete Phase 2
-
-The following scope was not completed in the narrowed Phase-2 execution slice and is therefore carried forward explicitly here rather than being treated as silently done:
-
-- additional built-in namespaced resources that still fit the workspace model without requiring Phase-3-only semantics;
-- selected cluster-scoped views with clear logical semantics and truthful discovery behavior.
-
-Phase-3 execution must account for those items explicitly in one of two ways before claiming broader completion:
-
-- implement the approved carry-forward resources or views as part of an early Phase-3 task with their own tests, verification, and truthful discovery rules;
-- or restate them as intentionally deferred non-goals with an explicit rationale.
-
-Phase 3 must not assume those surfaces were completed “somewhere in Phase 2”.
+There is no remaining carried-forward Phase-2 scope on the current branch. Phase 3 should assume this bounded Phase-2 baseline and only widen the surface where the stronger Phase-3 semantic model makes that truthful.
 
 ## File Structure
 
@@ -90,7 +75,7 @@ Phase 3 must not assume those surfaces were completed “somewhere in Phase 2”
 
 ## Tasks
 
-### Task 0: Reconcile Carry-Forward Phase-2 Surface Items
+### Task 0: Lock The Completed Phase-2 Baseline
 
 **Files:**
 - Modify: `pkg/workspace/support/matrix.go`
@@ -104,11 +89,11 @@ Phase 3 must not assume those surfaces were completed “somewhere in Phase 2”
 - Create if needed: `pkg/registry/workspace/storage/cluster_scoped.go`
 - Create if needed: `pkg/registry/workspace/storage/cluster_scoped_test.go`
 
-- [ ] **Step 1: Lock the carried-forward surface in failing tests or an explicit non-goal update**
+- [ ] **Step 1: Lock the completed Phase-2 surface in failing tests before broader Phase-3 work**
 
 ```go
 func TestPhase3CarryForwardSurface(t *testing.T) {
-	for _, resource := range approvedCarryForwardResources {
+	for _, resource := range approvedPhase2BaselineResources {
 		if !containsResource(discoverWorkspaceResources(t, server), resource) {
 			t.Fatalf("missing %s", resource)
 		}
@@ -121,11 +106,11 @@ If the carried-forward list is intentionally empty, replace the test step with a
 - [ ] **Step 2: Run the smallest relevant tests to verify the gap**
 
 Run: `go test ./pkg/workspace ./pkg/workspace/support ./pkg/registry/workspace/storage -run 'TestPhase3CarryForwardSurface|TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources' -count=1`
-Expected: FAIL until the carried-forward Phase-2 surface is either implemented or explicitly re-declared as deferred.
+Expected: FAIL until the completed Phase-2 baseline is reflected correctly in the pre-Phase-3 contract checks.
 
 - [ ] **Step 3: Implement or explicitly close the carry-forward scope**
 
-Do not let these items disappear into the broader Phase-3 catalog work. Either implement the approved carried-forward namespaced resources or selected cluster-scoped views with truthful discovery, or update the plan and contract tests to make their continued deferral explicit.
+Do not regress the completed Phase-2 surface while starting Phase 3. Use this task to lock the finished baseline before the broader catalog and dynamic-surface work begins.
 
 - [ ] **Step 4: Re-run the carry-forward verification**
 
@@ -136,7 +121,7 @@ Expected: PASS.
 
 ```bash
 git add pkg/workspace/support/matrix.go pkg/workspace/support/matrix_test.go pkg/workspace/apiserver_contract_test.go pkg/workspace/apiserver.go pkg/workspace/apiserver_test.go pkg/registry/workspace/storage/storage.go test/e2e/suites/workspace/workspace_api_test.go test/e2e/suites/workspace/README.md pkg/registry/workspace/storage/cluster_scoped.go pkg/registry/workspace/storage/cluster_scoped_test.go
-git commit -m "feat: reconcile carried-forward workspace surface"
+git commit -m "test: lock workspace phase2 baseline for phase3"
 ```
 
 ### Task 1: Lock The Phase-3 Capability Envelope In Tests First
