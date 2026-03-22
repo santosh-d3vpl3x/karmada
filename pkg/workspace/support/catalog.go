@@ -99,6 +99,38 @@ func (c Catalog) Resources() []schema.GroupVersionResource {
 	return resources
 }
 
+func (c Catalog) GroupVersions() []schema.GroupVersion {
+	seen := make(map[schema.GroupVersion]struct{}, len(c.entries))
+	groupVersions := make([]schema.GroupVersion, 0, len(c.entries))
+	for resource := range c.entries {
+		groupVersion := resource.GroupVersion()
+		if _, ok := seen[groupVersion]; ok {
+			continue
+		}
+		seen[groupVersion] = struct{}{}
+		groupVersions = append(groupVersions, groupVersion)
+	}
+	sort.Slice(groupVersions, func(i, j int) bool {
+		if groupVersions[i].Group != groupVersions[j].Group {
+			return groupVersions[i].Group < groupVersions[j].Group
+		}
+		return groupVersions[i].Version < groupVersions[j].Version
+	})
+	return groupVersions
+}
+
+func GroupVersions() []schema.GroupVersion {
+	return defaultCatalog.GroupVersions()
+}
+
+func ModeFor(resource schema.GroupVersionResource) (ResourceMode, bool) {
+	entry, ok := defaultCatalog.Entry(resource)
+	if !ok {
+		return "", false
+	}
+	return entry.Mode, true
+}
+
 func newCatalog(entries []CatalogEntry) Catalog {
 	catalog := Catalog{entries: make(map[schema.GroupVersionResource]CatalogEntry, len(entries))}
 	for _, entry := range entries {

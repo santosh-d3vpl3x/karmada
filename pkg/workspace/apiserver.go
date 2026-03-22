@@ -236,64 +236,17 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 	case info.Path == "/apis":
 		writeJSON(rw, http.StatusOK, &metav1.APIGroupList{
 			TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroupList"},
-			Groups: []metav1.APIGroup{
-				workspaceAPIGroup(appsV1),
-				workspaceAPIGroup(autoscalingV2),
-				workspaceAPIGroup(batchV1),
-				workspaceAPIGroup(networkingV1),
-				workspaceAPIGroup(policyV1),
-				workspaceAPIGroup(rbacV1),
-			},
-		})
-	case info.Path == "/apis/apps":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(appsV1))
-	case info.Path == "/apis/apps/v1":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: appsV1.String(),
-			APIResources: discoveryResourcesFor(appsV1),
-		})
-	case info.Path == "/apis/batch":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(batchV1))
-	case info.Path == "/apis/autoscaling":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(autoscalingV2))
-	case info.Path == "/apis/autoscaling/v2":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: autoscalingV2.String(),
-			APIResources: discoveryResourcesFor(autoscalingV2),
-		})
-	case info.Path == "/apis/batch/v1":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: batchV1.String(),
-			APIResources: discoveryResourcesFor(batchV1),
-		})
-	case info.Path == "/apis/networking.k8s.io":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(networkingV1))
-	case info.Path == "/apis/networking.k8s.io/v1":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: networkingV1.String(),
-			APIResources: discoveryResourcesFor(networkingV1),
-		})
-	case info.Path == "/apis/policy":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(policyV1))
-	case info.Path == "/apis/policy/v1":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: policyV1.String(),
-			APIResources: discoveryResourcesFor(policyV1),
-		})
-	case info.Path == "/apis/rbac.authorization.k8s.io":
-		writeJSON(rw, http.StatusOK, workspaceAPIGroup(rbacV1))
-	case info.Path == "/apis/rbac.authorization.k8s.io/v1":
-		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
-			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
-			GroupVersion: rbacV1.String(),
-			APIResources: discoveryResourcesFor(rbacV1),
+			Groups:   discoveryAPIGroups(),
 		})
 	default:
+		if group, ok := discoveryAPIGroupForPath(info.Path); ok {
+			writeJSON(rw, http.StatusOK, group)
+			return
+		}
+		if resourceList, ok := discoveryAPIResourcesForPath(info.Path); ok {
+			writeJSON(rw, http.StatusOK, resourceList)
+			return
+		}
 		writeAPIError(rw, apierrors.NewNotFound(schema.GroupResource{}, info.Path))
 	}
 }
@@ -674,18 +627,81 @@ func discoverySubresources(gvr schema.GroupVersionResource, capability support.C
 	return resources
 }
 
-func workspaceAPIGroup(groupVersion schema.GroupVersion) metav1.APIGroup {
+func discoveryGroupVersions() []schema.GroupVersion {
+	groupVersions := support.GroupVersions()
+	filtered := make([]schema.GroupVersion, 0, len(groupVersions))
+	for _, groupVersion := range groupVersions {
+		if groupVersion.Group == "" {
+			continue
+		}
+		filtered = append(filtered, groupVersion)
+	}
+	return filtered
+}
+
+func discoveryAPIGroups() []metav1.APIGroup {
+	grouped := make(map[string][]schema.GroupVersion)
+	groupNames := make([]string, 0)
+	for _, groupVersion := range discoveryGroupVersions() {
+		if _, ok := grouped[groupVersion.Group]; !ok {
+			groupNames = append(groupNames, groupVersion.Group)
+		}
+		grouped[groupVersion.Group] = append(grouped[groupVersion.Group], groupVersion)
+	}
+	sort.Strings(groupNames)
+
+	groups := make([]metav1.APIGroup, 0, len(groupNames))
+	for _, groupName := range groupNames {
+		groups = append(groups, workspaceAPIGroup(grouped[groupName]))
+	}
+	return groups
+}
+
+func discoveryAPIGroupForPath(requestPath string) (metav1.APIGroup, bool) {
+	segments := splitPath(requestPath)
+	if len(segments) != 2 || segments[0] != "apis" {
+		return metav1.APIGroup{}, false
+	}
+	for _, group := range discoveryAPIGroups() {
+		if group.Name == segments[1] {
+			return group, true
+		}
+	}
+	return metav1.APIGroup{}, false
+}
+
+func discoveryAPIResourcesForPath(requestPath string) (*metav1.APIResourceList, bool) {
+	segments := splitPath(requestPath)
+	if len(segments) != 3 || segments[0] != "apis" {
+		return nil, false
+	}
+	for _, groupVersion := range discoveryGroupVersions() {
+		if groupVersion.Group != segments[1] || groupVersion.Version != segments[2] {
+			continue
+		}
+		return &metav1.APIResourceList{
+			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+			GroupVersion: groupVersion.String(),
+			APIResources: discoveryResourcesFor(groupVersion),
+		}, true
+	}
+	return nil, false
+}
+
+func workspaceAPIGroup(groupVersions []schema.GroupVersion) metav1.APIGroup {
+	versions := make([]metav1.GroupVersionForDiscovery, 0, len(groupVersions))
+	for _, groupVersion := range groupVersions {
+		versions = append(versions, metav1.GroupVersionForDiscovery{
+			GroupVersion: groupVersion.String(),
+			Version:      groupVersion.Version,
+		})
+	}
+	preferred := versions[len(versions)-1]
 	return metav1.APIGroup{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroup"},
-		Name:     groupVersion.Group,
-		PreferredVersion: metav1.GroupVersionForDiscovery{
-			GroupVersion: groupVersion.String(),
-			Version:      groupVersion.Version,
-		},
-		Versions: []metav1.GroupVersionForDiscovery{{
-			GroupVersion: groupVersion.String(),
-			Version:      groupVersion.Version,
-		}},
+		TypeMeta:         metav1.TypeMeta{APIVersion: "v1", Kind: "APIGroup"},
+		Name:             groupVersions[0].Group,
+		PreferredVersion: preferred,
+		Versions:         versions,
 	}
 }
 
@@ -897,7 +913,8 @@ func requiresDesiredStateCompilation(verb string) bool {
 }
 
 func isProjectedRuntimeResource(resource schema.GroupVersionResource) bool {
-	return resource == corev1.SchemeGroupVersion.WithResource("pods") || resource == corev1.SchemeGroupVersion.WithResource("events")
+	mode, ok := support.ModeFor(resource)
+	return ok && mode == support.ResourceModeProjectedRuntime
 }
 
 func writeJSON(rw http.ResponseWriter, statusCode int, object any) {

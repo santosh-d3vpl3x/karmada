@@ -17,6 +17,7 @@ limitations under the License.
 package support
 
 import (
+	"reflect"
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -116,6 +117,53 @@ func TestDefaultCatalogPreservesWorkspaceModes(t *testing.T) {
 			}
 			if entry.Capability.Write != tt.write {
 				t.Fatalf("got write=%t, want %t", entry.Capability.Write, tt.write)
+			}
+		})
+	}
+}
+
+func TestDefaultCatalogGroupVersions(t *testing.T) {
+	catalog := DefaultCatalog()
+
+	expected := []schema.GroupVersion{
+		corev1.SchemeGroupVersion,
+		appsv1.SchemeGroupVersion,
+		autoscalingv2.SchemeGroupVersion,
+		batchv1.SchemeGroupVersion,
+		networkingv1.SchemeGroupVersion,
+		policyv1.SchemeGroupVersion,
+		rbacv1.SchemeGroupVersion,
+	}
+
+	if actual := catalog.GroupVersions(); !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("unexpected group versions: %#v", actual)
+	}
+}
+
+func TestModeForReturnsConfiguredResourceMode(t *testing.T) {
+	tests := []struct {
+		name     string
+		resource schema.GroupVersionResource
+		mode     ResourceMode
+		ok       bool
+	}{
+		{name: "namespace", resource: corev1.SchemeGroupVersion.WithResource("namespaces"), mode: ResourceModeLogicalClusterView, ok: true},
+		{name: "pod", resource: corev1.SchemeGroupVersion.WithResource("pods"), mode: ResourceModeProjectedRuntime, ok: true},
+		{name: "configmap", resource: corev1.SchemeGroupVersion.WithResource("configmaps"), mode: ResourceModeDesiredState, ok: true},
+		{name: "node", resource: corev1.SchemeGroupVersion.WithResource("nodes"), ok: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mode, ok := ModeFor(tt.resource)
+			if ok != tt.ok {
+				t.Fatalf("got ok=%t, want %t", ok, tt.ok)
+			}
+			if !tt.ok {
+				return
+			}
+			if mode != tt.mode {
+				t.Fatalf("got mode %q, want %q", mode, tt.mode)
 			}
 		})
 	}

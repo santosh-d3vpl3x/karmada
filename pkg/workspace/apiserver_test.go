@@ -18,8 +18,17 @@ package workspace
 
 import (
 	"net/http"
+	"reflect"
 	"testing"
 
+	"k8s.io/apimachinery/pkg/runtime/schema"
+
+	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
+	batchv1 "k8s.io/api/batch/v1"
+	networkingv1 "k8s.io/api/networking/v1"
+	policyv1 "k8s.io/api/policy/v1"
+	rbacv1 "k8s.io/api/rbac/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/endpoints/openapi"
 	"k8s.io/apiserver/pkg/registry/generic"
@@ -62,5 +71,20 @@ func TestWorkspaceAPIServerInstallsWorkspaceGroup(t *testing.T) {
 	}
 	if server.GenericAPIServer == nil {
 		t.Fatal("expected generic apiserver")
+	}
+}
+
+func TestWorkspaceDiscoveryGroupVersionsFollowSupportCatalog(t *testing.T) {
+	expected := []schema.GroupVersion{
+		appsv1.SchemeGroupVersion,
+		autoscalingv2.SchemeGroupVersion,
+		batchv1.SchemeGroupVersion,
+		networkingv1.SchemeGroupVersion,
+		policyv1.SchemeGroupVersion,
+		rbacv1.SchemeGroupVersion,
+	}
+
+	if actual := discoveryGroupVersions(); !reflect.DeepEqual(actual, expected) {
+		t.Fatalf("unexpected discovery group versions: %#v", actual)
 	}
 }
