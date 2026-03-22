@@ -9,6 +9,7 @@ REGISTRY_PASSWORD?=""
 REGISTRY_SERVER_ADDRESS?=""
 
 TARGETS := karmada-aggregated-apiserver \
+			karmada-workspace-apiserver \
 			karmada-controller-manager \
 			karmada-scheduler \
 			karmada-descheduler \

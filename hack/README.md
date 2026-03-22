@@ -48,6 +48,8 @@ ensures development quality.
   Scheduler Estimator to the specific cluster together. If applied, there is no need to use the extra `deploy-karmada-agent.sh`
   and `deploy-scheduler-estimator.sh` script.
 
+- [`deploy-workspace-apiserver.sh`](deploy-workspace-apiserver.sh) This script deploys the opt-in workspace API server on top of a local-up Karmada environment, builds and loads the current `karmada-workspace-apiserver` image into the host kind cluster by default, and registers the workspace APIService so `karmadactl workspace kubeconfig`, workspace `kubectl`, and `k9s` flows can be verified against a real endpoint.
+
 - [`undeploy-karmada.sh`](undeploy-karmada.sh) This script will uninstall Karmada from the specific cluster.
   It will uninstall Karmada from your local environment default. If you installed Karmada with `remote-up-karmada.sh`,
   please use it like this: `hack/undeploy-karmada.sh <KUBECONFIG> <CONTEXT_NAME>`, the same parameters as you input at

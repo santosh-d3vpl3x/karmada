@@ -30,6 +30,18 @@ The automated suite covers the currently implemented workspace surface on this b
 
 ## Environment Requirements
 
+### Recommended Local-Up Verification Flow
+
+For laptop verification without a pre-existing cluster:
+
+1. Run `hack/local-up-karmada.sh`.
+2. Export `KUBECONFIG=$HOME/.kube/karmada.config`.
+3. Make sure `docker`, `kind`, and `cfssl` are available, and build `karmadactl` if `$(go env GOPATH)/bin/karmadactl` is not already present.
+4. Deploy the workspace apiserver with `hack/deploy-workspace-apiserver.sh $HOME/.kube/karmada.config karmada-host $HOME/.kube/karmada.config karmada-apiserver`.
+5. If you need a non-default image tag or registry, set `REGISTRY`, `VERSION`, or `BUILD_FROM_SOURCE=false` before the deploy step.
+6. Run `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`.
+7. Generate a workspace kubeconfig with `karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig` and use it with `kubectl` or `k9s`.
+
 The suite assumes all of the following are true:
 
 - `KUBECONFIG` points at a Karmada control-plane kubeconfig

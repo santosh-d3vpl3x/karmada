@@ -25,6 +25,7 @@ ETCD_POD_LABEL="etcd"
 APISERVER_POD_LABEL="karmada-apiserver"
 KUBE_CONTROLLER_POD_LABEL="kube-controller-manager"
 KARMADA_AGGREGATION_APISERVER_LABEL="karmada-aggregated-apiserver"
+KARMADA_WORKSPACE_APISERVER_LABEL="karmada-workspace-apiserver"
 KARMADA_CONTROLLER_LABEL="karmada-controller-manager"
 KARMADA_SCHEDULER_LABEL="karmada-scheduler"
 KARMADA_DESCHEDULER_LABEL="karmada-descheduler"
@@ -51,6 +52,7 @@ KIND_VERSION=$(grep 'sigs.k8s.io/kind ' $(dirname "${BASH_SOURCE[0]}")/../go.mod
 
 KARMADA_TARGET_SOURCE=(
   karmada-aggregated-apiserver=cmd/aggregated-apiserver
+  karmada-workspace-apiserver=cmd/karmada-workspace-apiserver
   karmada-controller-manager=cmd/controller-manager
   karmada-scheduler=cmd/scheduler
   karmada-descheduler=cmd/descheduler
