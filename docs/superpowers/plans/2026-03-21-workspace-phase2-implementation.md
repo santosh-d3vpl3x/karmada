@@ -33,6 +33,13 @@ Implemented on the current branch:
 - `86eea7464` `feat: add workspace live target inspection and debug views`
 - `843422d81` `test: cover workspace phase2 debug e2e`
 
+Also present on the current branch, but not part of the Phase-2 scope decision itself:
+
+- `b6bd40998` `fix: restore workspace namespace CRUD contract`
+- `3fa20b6e2` `fix: cover named workspace namespace writes`
+
+Those follow-up commits repair and verify the Phase-1 namespace contract; they should not be mistaken for completion of the remaining Phase-2 resource-surface roadmap.
+
 Still Phase-2 roadmap items, but not yet approved for implementation on this branch:
 
 - additional built-in namespaced resources;

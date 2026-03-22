@@ -23,12 +23,17 @@ This plan does not revisit the giant-cluster model or split desired-state owners
 
 ## Current Planning Note
 
-Current branch history includes the narrowed Phase-2 debug slice only:
+Current branch history includes the narrowed Phase-2 debug slice:
 
 - explicit target-selection or inspection support for ambiguous live pod operations;
 - stronger placement and runtime debugging through a readable `PlacementView` surface and matching verification.
 
-This Phase-3 plan should not be read as assuming that broader Phase-2 resource-surface work is already complete. Remaining Phase-2 items such as additional built-in namespaced resources and selected cluster-scoped views still need their own explicit approval and execution before any Phase-3 rollout should claim to build on them.
+Current branch history also includes Phase-1 follow-up repair work after the initial rollout:
+
+- restoration of the workspace namespace CRUD contract;
+- added coverage for named namespace update and delete forwarding.
+
+This Phase-3 plan should not be read as assuming that broader Phase-2 resource-surface work is already complete. Those Phase-1 follow-up fixes improve the baseline contract only; they do not satisfy the remaining Phase-2 roadmap items such as additional built-in namespaced resources and selected cluster-scoped views.
 
 ## Explicit Carry-Forward From Incomplete Phase 2
 
