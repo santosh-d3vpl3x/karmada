@@ -13,8 +13,8 @@ The automated suite covers the currently implemented workspace surface on this b
 
 - workspace kubeconfig generation through `karmadactl workspace kubeconfig`
 - `kubectl api-resources` over the supported workspace surface
-- read-only logical namespace visibility through the workspace API
-- CRUD-oriented flows for the remaining writable desired-state resources after out-of-band namespace bootstrap
+- namespace creation and visibility through the workspace API
+- CRUD-oriented flows for the writable desired-state resources
 - `kubectl get pods`
 - `kubectl get events`
 - `kubectl get -w` on a supported resource
@@ -34,7 +34,6 @@ The suite assumes all of the following are true:
 - `KUBECONFIG` points at a Karmada control-plane kubeconfig
 - `$(go env GOPATH)/bin/karmadactl` exists
 - the target environment publishes the workspace proxy endpoint and truthful workspace discovery
-- control-plane access can bootstrap a workspace-visible namespace for the test workspace
 - desired-state writes for supported namespaced resources, projected runtime reads, and live pod subresources are wired in the deployed workspace apiserver
 - the control-plane kubeconfig can reach `placementviews.workspace.karmada.io` read endpoints when the phase-2 debug surface is deployed
 - `WORKSPACE_E2E_AMBIGUOUS_POD` names a known ambiguous workspace-visible pod when running the ambiguity inspection and explicit-target-selection checks
@@ -47,7 +46,7 @@ If those prerequisites are not met, the suite skips instead of pretending the cu
 
 1. Generate a workspace kubeconfig with `karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig`.
 2. Launch `k9s --kubeconfig /tmp/<workspace>.kubeconfig`.
-3. Confirm the default views show the read-only logical namespace view, workloads, pods, and events without exposing unsupported cluster-scoped surfaces such as nodes.
+3. Confirm the default views show logical workspace namespaces, workloads, pods, and events without exposing unsupported cluster-scoped surfaces such as nodes.
 4. Navigate from a workload to a pod and verify log viewing works on the supported workload surface.
 5. Verify shell and port-forward actions behave normally for a uniquely resolved pod target.
 6. If an intentionally ambiguous live target is available, confirm the operation fails explicitly instead of silently selecting a backing cluster.

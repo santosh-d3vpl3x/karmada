@@ -91,7 +91,7 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 	}
 }
 
-func TestWorkspaceNamespaceDiscoveryAdvertisesReadOnlyLogicalView(t *testing.T) {
+func TestWorkspaceNamespaceDiscoveryAdvertisesWritableLogicalView(t *testing.T) {
 	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
 
 	coreResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/api/v1"))
@@ -102,14 +102,9 @@ func TestWorkspaceNamespaceDiscoveryAdvertisesReadOnlyLogicalView(t *testing.T) 
 	if resource.Namespaced {
 		t.Fatal("namespace view must remain cluster-scoped")
 	}
-	for _, verb := range []string{"get", "list", "watch"} {
+	for _, verb := range []string{"get", "list", "watch", "create", "update", "patch", "delete", "deletecollection"} {
 		if !containsString(resource.Verbs, verb) {
 			t.Fatalf("expected namespace discovery verb %q", verb)
-		}
-	}
-	for _, verb := range []string{"create", "update", "patch", "delete", "deletecollection"} {
-		if containsString(resource.Verbs, verb) {
-			t.Fatalf("did not expect namespace discovery verb %q", verb)
 		}
 	}
 }
@@ -167,12 +162,43 @@ func TestWorkspaceUnsupportedVerbContract(t *testing.T) {
 }
 
 func TestWorkspaceNamespaceWriteContract(t *testing.T) {
-	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
+	backend := newRecordingBackend(t)
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{backend: backend, runtimeState: defaultRuntimeState()})
 
-	resp := doJSONRequest(t, server, http.MethodPost, workspaceProxyPath("team-a", "/api/v1/namespaces"), []byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"demo"}}`))
+	namespace := corev1.Namespace{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
+	}
+	body, err := json.Marshal(&namespace)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSONRequest(t, server, http.MethodPost, workspaceProxyPath("team-a", "/api/v1/namespaces"), body)
 	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusMethodNotAllowed {
+	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("got %d", resp.StatusCode)
+	}
+	if backend.lastRequest == nil {
+		t.Fatal("expected desired-state request to be forwarded")
+	}
+	if backend.lastRequest.URL.Path != "/api/v1/namespaces" {
+		t.Fatalf("got path %q", backend.lastRequest.URL.Path)
+	}
+
+	forwarded := &corev1.Namespace{}
+	if err := json.Unmarshal(backend.lastBody, forwarded); err != nil {
+		t.Fatal(err)
+	}
+	annotations := forwarded.GetAnnotations()
+	if annotations[facade.AnnotationWorkspaceName] != "team-a" {
+		t.Fatalf("missing workspace annotation: %#v", annotations)
+	}
+	if annotations[facade.AnnotationWorkspaceResource] == "" {
+		t.Fatal("missing workspace resource annotation")
+	}
+	if forwarded.GetLabels()[facade.LabelWorkspaceName] != "team-a" {
+		t.Fatalf("missing workspace label: %#v", forwarded.GetLabels())
 	}
 }
 

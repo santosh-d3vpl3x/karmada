@@ -20,7 +20,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"net/http"
 	"sort"
 	"strings"
 	"sync"
@@ -30,7 +29,6 @@ import (
 	"github.com/onsi/gomega"
 	krand "k8s.io/apimachinery/pkg/util/rand"
 
-	"github.com/karmada-io/karmada/pkg/workspace/facade"
 	"github.com/karmada-io/karmada/test/e2e/framework"
 )
 
@@ -162,43 +160,6 @@ metadata:
   labels:
     suite: workspace-e2e
 `, namespace)
-}
-
-func ensureWorkspaceVisibleNamespace(h *workspaceHarness) {
-	payload := fmt.Sprintf(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"%s","labels":{"suite":"workspace-e2e","%s":"%s"},"annotations":{"%s":"%s"}}}`,
-		h.Namespace,
-		facade.LabelWorkspaceName,
-		h.Access.Name,
-		facade.AnnotationWorkspaceName,
-		h.Access.Name,
-	)
-
-	resp, err := controlPlaneRawRequest(http.MethodPost, "api/v1/namespaces", strings.NewReader(payload), "application/json")
-	if err != nil {
-		ginkgo.Skip(fmt.Sprintf("workspace namespace bootstrap is not available in the current environment: %v", err))
-	}
-	defer resp.Body.Close()
-	body := readWorkspaceResponseBody(resp)
-	if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusConflict && resp.StatusCode != http.StatusOK {
-		ginkgo.Skip(fmt.Sprintf("workspace namespace bootstrap is not available in the current environment: %s", strings.TrimSpace(body)))
-	}
-
-	output, ok := waitForWorkspaceKubectl(h, pollTimeout, "get", "namespace", h.Namespace, "-o", "name")
-	if !ok {
-		ginkgo.Skip(fmt.Sprintf("workspace logical namespace view is not available in the current environment: %s", strings.TrimSpace(output)))
-	}
-}
-
-func deleteWorkspaceVisibleNamespace(h *workspaceHarness) {
-	if h == nil {
-		return
-	}
-	resp, err := controlPlaneRawRequest(http.MethodDelete, "api/v1/namespaces/"+h.Namespace, nil, "")
-	if err != nil {
-		return
-	}
-	defer resp.Body.Close()
-	_, _ = framework.RunWorkspaceKubectl(h.Access.KubeconfigPath, "get", "namespace", h.Namespace, "-o", "name")
 }
 
 func workspaceWritableManifest(namespace string) string {
@@ -448,7 +409,6 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 
 	ginkgo.BeforeAll(func() {
 		harness = mustWorkspaceHarness()
-		ensureWorkspaceVisibleNamespace(harness)
 	})
 
 	ginkgo.AfterAll(func() {
@@ -456,7 +416,7 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 			return
 		}
 		_, _ = deleteWorkspaceManifest(harness, workspaceWritableManifest(harness.Namespace))
-		deleteWorkspaceVisibleNamespace(harness)
+		_, _ = deleteWorkspaceManifest(harness, workspaceNamespaceManifest(harness.Namespace))
 	})
 
 	ginkgo.It("generates a workspace kubeconfig through karmadactl workspace kubeconfig", func() {
@@ -478,25 +438,21 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 		}
 	})
 
-	ginkgo.It("exposes namespaces as a read-only logical view", func() {
+	ginkgo.It("supports namespace creation through the workspace API", func() {
+		output, err := applyWorkspaceManifest(harness, workspaceNamespaceManifest(harness.Namespace))
+		gomega.Expect(err).ShouldNot(gomega.HaveOccurred(), output)
+
 		output, ok := waitForWorkspaceKubectl(harness, pollTimeout, "get", "namespace", harness.Namespace, "-o", "name")
 		if !ok {
 			ginkgo.Skip(fmt.Sprintf("workspace logical namespaces are not available in the current environment: %s", strings.TrimSpace(output)))
 		}
 		gomega.Expect(strings.TrimSpace(output)).Should(gomega.Equal("namespace/" + harness.Namespace))
-
-		payload := fmt.Sprintf(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"%s-denied"}}`, harness.Namespace)
-		resp, err := workspaceRawRequest(harness.Access, http.MethodPost, "api/v1/namespaces", strings.NewReader(payload), "application/json")
-		gomega.Expect(err).ShouldNot(gomega.HaveOccurred())
-		defer resp.Body.Close()
-		body := readWorkspaceResponseBody(resp)
-		gomega.Expect(resp.StatusCode).Should(gomega.Equal(http.StatusMethodNotAllowed), body)
 	})
 
-	ginkgo.It("supports CRUD for writable desired-state resources in a workspace-visible namespace", func() {
+	ginkgo.It("supports CRUD for writable desired-state resources in a workspace namespace", func() {
 		output, ok := waitForWorkspaceKubectl(harness, pollTimeout, "get", "namespace", harness.Namespace, "-o", "name")
 		if !ok {
-			ginkgo.Skip(fmt.Sprintf("workspace logical namespaces are not available in the current environment: %s", strings.TrimSpace(output)))
+			ginkgo.Skip(fmt.Sprintf("workspace namespaces are not writable in the current environment: %s", strings.TrimSpace(output)))
 		}
 
 		output, err := applyWorkspaceManifest(harness, workspaceWritableManifest(harness.Namespace))

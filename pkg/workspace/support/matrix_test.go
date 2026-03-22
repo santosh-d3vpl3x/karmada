@@ -55,7 +55,7 @@ func TestPodCapabilityIncludesPhase1LiveSubresources(t *testing.T) {
 	}
 }
 
-func TestNamespaceCapabilityIsReadOnly(t *testing.T) {
+func TestNamespaceCapabilityIsWritable(t *testing.T) {
 	capability, ok := CapabilityFor(namespacesGVR)
 	if !ok {
 		t.Fatal("expected namespace capability")
@@ -66,10 +66,10 @@ func TestNamespaceCapabilityIsReadOnly(t *testing.T) {
 	if !capability.Watch {
 		t.Fatal("expected namespace watch support")
 	}
-	if capability.Write {
-		t.Fatal("namespace view must remain read-only")
+	if !capability.Write {
+		t.Fatal("expected namespace write support")
 	}
-	if Supports(namespacesGVR, "create") {
-		t.Fatal("did not expect namespace create support")
+	if !Supports(namespacesGVR, "create") {
+		t.Fatal("expected namespace create support")
 	}
 }
