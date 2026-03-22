@@ -620,6 +620,54 @@ Some behaviors should remain request-time operations rather than long-running re
 - one-off live target resolution.
 
 Those operations should execute against the current workspace index and placement knowledge. The reconciled or maintained part is the underlying state they depend on, not the live session itself.
+## User Stories By Perspective
+
+These user stories explain why the phased roadmap exists. They are intentionally broader than the current implementation cut, and they are not all Phase-3-only outcomes.
+
+- Phase 1 covers the baseline workload-centric stories.
+- Phase 2 extends that experience with explicit ambiguity handling, stronger debug surfaces, and selected resource-surface growth.
+- Phase 3 covers the harder stories that need broader semantic work, especially cluster-scoped resources, CRDs, arbitrary propagated resources, and extension-style APIs.
+
+### Tenant developer
+
+- As a tenant developer, I want to open one workspace kubeconfig in `kubectl` or `k9s` and manage the supported app resources as if I were talking to one normal Kubernetes cluster.
+- As a tenant developer, I want namespace and workload workflows to feel normal, so I do not need to understand Karmada internals to ship and debug applications.
+- As a tenant developer, I want `logs`, `exec`, `attach`, and `port-forward` to work on supported pods without exposing backing-cluster identity in the normal success path.
+- As a tenant developer, I want ambiguous live operations to fail explicitly unless I choose a target, so the system does not make hidden routing decisions on my behalf.
+
+### Tenant operator
+
+- As a tenant operator, I want to create and manage workspace namespaces and supported workloads through the workspace API, so tenant automation stays Kubernetes-native.
+- As a tenant operator, I want truthful discovery, so standard tools only show resources and verbs that really work in the workspace.
+- As a tenant operator, I want readable placement and runtime debug surfaces when the logical view and the realized state diverge.
+- As a tenant operator, I want broader built-in and selected cluster-scoped views to appear only when their semantics are clear enough to trust in day-to-day operations.
+
+### Platform operator
+
+- As a platform operator, I want the workspace API to feel like a tenant-safe cluster view without leaking raw multicluster topology into the primary contract.
+- As a platform operator, I want Karmada to remain authoritative for desired state and propagation, so the workspace layer does not become a second competing control plane.
+- As a platform operator, I want unsupported or semantically unclear resources to stay hidden until they can be exposed honestly.
+- As a platform operator, I want later phases to extend the surface without forcing a redesign of the core workspace architecture.
+
+### Client and tool author
+
+- As a `kubectl` or `k9s` user, I want the workspace endpoint to have truthful API discovery, so generic Kubernetes tooling behaves predictably.
+- As a client or integration author, I want supported reads, writes, watches, and live subresources to keep Kubernetes-like semantics on the enabled surface.
+- As a client author, I want explicit error shapes for ambiguity and unsupported surfaces, so automation can distinguish “not supported”, “not found”, and “needs target selection”.
+- As a tool author, I want later phases to widen the surface only when the API contract is stable enough that generic tooling does not need special-case guesswork.
+
+### Extension and CRD author
+
+- As an extension or CRD author, I want my API to appear in the workspace only when its semantics are well-defined enough to preserve logical identity, truthful discovery, and safe mutation behavior.
+- As an extension author, I do not want the workspace to advertise my API merely because it exists in a backing cluster if the logical giant-cluster semantics are still unclear.
+- As an extension author, I want Phase 3 to generalize the framework so broader propagated resources and aggregated APIs can be added without one-off redesigns for each API group.
+
+### Security and audit stakeholder
+
+- As a security stakeholder, I want the workspace to preserve a stable tenant boundary, so users act on logical workspace objects rather than raw backing-cluster copies.
+- As an audit stakeholder, I want routing and propagation decisions to stay explicit in secondary status and debug surfaces rather than being hidden inside surprising primary-object identity.
+- As a security stakeholder, I want ambiguous runtime operations and unsupported surfaces to fail explicitly instead of silently widening access or leaking topology.
+
 ## Phases
 
 ### Phase 1: usable tenant workspace
