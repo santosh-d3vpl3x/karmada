@@ -30,6 +30,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -89,6 +90,11 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 			t.Fatalf("expected %s in workspace apps discovery", name)
 		}
 	}
+
+	networkingResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/apis/networking.k8s.io/v1"))
+	if !containsResource(networkingResources, "networkpolicies") {
+		t.Fatal("expected networkpolicies in workspace networking discovery")
+	}
 }
 
 func TestWorkspaceServiceAccountWriteContract(t *testing.T) {
@@ -133,7 +139,7 @@ func TestWorkspaceServiceAccountWriteContract(t *testing.T) {
 	})
 
 	serviceAccount := corev1.ServiceAccount{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "ServiceAccount"},
 		ObjectMeta: metav1.ObjectMeta{Name: "builder", Namespace: "default"},
 	}
 	body, err := json.Marshal(&serviceAccount)
@@ -142,6 +148,67 @@ func TestWorkspaceServiceAccountWriteContract(t *testing.T) {
 	}
 
 	resp := doJSONRequest(t, server, http.MethodPost, workspaceProxyPath("team-a", "/api/v1/namespaces/default/serviceaccounts"), body)
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
+func TestWorkspaceNetworkPolicyWriteContract(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		if req.Method != http.MethodPost {
+			t.Fatalf("got method %q", req.Method)
+		}
+		if req.URL.Path != "/apis/networking.k8s.io/v1/namespaces/default/networkpolicies" {
+			t.Fatalf("got path %q", req.URL.Path)
+		}
+		body, err := io.ReadAll(req.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = req.Body.Close()
+
+		forwarded := &networkingv1.NetworkPolicy{}
+		if err := json.Unmarshal(body, forwarded); err != nil {
+			t.Fatal(err)
+		}
+		if forwarded.Annotations[facade.AnnotationWorkspaceName] != "team-a" {
+			t.Fatalf("missing workspace annotation: %#v", forwarded.Annotations)
+		}
+		if forwarded.Labels[facade.LabelWorkspaceName] != "team-a" {
+			t.Fatalf("missing workspace label: %#v", forwarded.Labels)
+		}
+
+		rw.Header().Set("Content-Type", "application/json")
+		rw.WriteHeader(http.StatusCreated)
+		_ = json.NewEncoder(rw).Encode(forwarded)
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{
+		runtimeState:     defaultRuntimeState(),
+		backendURL:       backendURL,
+		backendTransport: backend.Client().Transport,
+	})
+
+	networkPolicy := networkingv1.NetworkPolicy{
+		TypeMeta:   metav1.TypeMeta{APIVersion: "networking.k8s.io/v1", Kind: "NetworkPolicy"},
+		ObjectMeta: metav1.ObjectMeta{Name: "default-deny", Namespace: "default"},
+		Spec: networkingv1.NetworkPolicySpec{
+			PodSelector: metav1.LabelSelector{},
+			PolicyTypes: []networkingv1.PolicyType{networkingv1.PolicyTypeIngress},
+		},
+	}
+	body, err := json.Marshal(&networkPolicy)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	resp := doJSONRequest(t, server, http.MethodPost, workspaceProxyPath("team-a", "/apis/networking.k8s.io/v1/namespaces/default/networkpolicies"), body)
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("got %d", resp.StatusCode)
@@ -223,7 +290,7 @@ func TestWorkspaceNamespaceWriteContract(t *testing.T) {
 	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{backend: backend, runtimeState: defaultRuntimeState()})
 
 	namespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
 	}
 	body, err := json.Marshal(&namespace)
@@ -300,7 +367,7 @@ func TestWorkspaceNamespaceUpdateContract(t *testing.T) {
 	})
 
 	namespace := corev1.Namespace{
-		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
+		TypeMeta:   metav1.TypeMeta{APIVersion: "v1", Kind: "Namespace"},
 		ObjectMeta: metav1.ObjectMeta{Name: "demo"},
 	}
 	body, err := json.Marshal(&namespace)

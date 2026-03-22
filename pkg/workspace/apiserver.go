@@ -31,6 +31,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metainternalversion "k8s.io/apimachinery/pkg/apis/meta/internalversion"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -57,9 +58,10 @@ import (
 const componentName = "karmada-workspace-apiserver"
 
 var (
-	coreV1  = schema.GroupVersion{Version: "v1"}
-	appsV1  = appsv1.SchemeGroupVersion
-	batchV1 = batchv1.SchemeGroupVersion
+	coreV1       = schema.GroupVersion{Version: "v1"}
+	appsV1       = appsv1.SchemeGroupVersion
+	batchV1      = batchv1.SchemeGroupVersion
+	networkingV1 = networkingv1.SchemeGroupVersion
 )
 
 // RequestAuthorizer authorizes one nested workspace request.
@@ -231,6 +233,7 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 			Groups: []metav1.APIGroup{
 				workspaceAPIGroup(appsV1),
 				workspaceAPIGroup(batchV1),
+				workspaceAPIGroup(networkingV1),
 			},
 		})
 	case info.Path == "/apis/apps":
@@ -248,6 +251,14 @@ func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *wor
 			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
 			GroupVersion: batchV1.String(),
 			APIResources: discoveryResourcesFor(batchV1),
+		})
+	case info.Path == "/apis/networking.k8s.io":
+		writeJSON(rw, http.StatusOK, workspaceAPIGroup(networkingV1))
+	case info.Path == "/apis/networking.k8s.io/v1":
+		writeJSON(rw, http.StatusOK, &metav1.APIResourceList{
+			TypeMeta:     metav1.TypeMeta{APIVersion: "v1", Kind: "APIResourceList"},
+			GroupVersion: networkingV1.String(),
+			APIResources: discoveryResourcesFor(networkingV1),
 		})
 	default:
 		writeAPIError(rw, apierrors.NewNotFound(schema.GroupResource{}, info.Path))
@@ -688,6 +699,8 @@ func kindFor(gvr schema.GroupVersionResource) string {
 		return "Secret"
 	case corev1.SchemeGroupVersion.WithResource("serviceaccounts"):
 		return "ServiceAccount"
+	case networkingv1.SchemeGroupVersion.WithResource("networkpolicies"):
+		return "NetworkPolicy"
 	case corev1.SchemeGroupVersion.WithResource("services"):
 		return "Service"
 	case corev1.SchemeGroupVersion.WithResource("pods"):

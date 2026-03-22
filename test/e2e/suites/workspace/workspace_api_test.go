@@ -83,6 +83,7 @@ func supportedWorkspaceAPIResources() []string {
 		"events",
 		"jobs.batch",
 		"namespaces",
+		"networkpolicies.networking.k8s.io",
 		"pods",
 		"pods/attach",
 		"pods/exec",
@@ -200,6 +201,16 @@ kind: ServiceAccount
 metadata:
   name: workspace-builder
   namespace: %s
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: workspace-deny
+  namespace: %s
+spec:
+  podSelector: {}
+  policyTypes:
+  - Ingress
 ---
 apiVersion: v1
 kind: Service
@@ -331,7 +342,7 @@ spec:
           - name: app
             image: busybox:1.36.0
             command: ["sh", "-c", "echo workspace-cron"]
-`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
+`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
 }
 
 func workspaceWritableUpdateManifest(namespace string) string {
@@ -502,6 +513,7 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 			{"get", "configmap", "workspace-config", "-n", harness.Namespace, "-o", "jsonpath={.data.mode}"},
 			{"get", "secret", "workspace-secret", "-n", harness.Namespace, "-o", "jsonpath={.data.token}"},
 			{"get", "serviceaccount", "workspace-builder", "-n", harness.Namespace, "-o", "name"},
+			{"get", "networkpolicy", "workspace-deny", "-n", harness.Namespace, "-o", "name"},
 			{"get", "service", "workspace-service", "-n", harness.Namespace, "-o", "name"},
 			{"get", "deployment", "workspace-demo", "-n", harness.Namespace, "-o", "name"},
 			{"get", "statefulset", "workspace-stateful", "-n", harness.Namespace, "-o", "name"},

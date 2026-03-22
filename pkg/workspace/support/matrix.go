@@ -23,6 +23,7 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
 )
@@ -36,18 +37,19 @@ type Capability struct {
 }
 
 var phase1Matrix = map[schema.GroupVersionResource]Capability{
-	corev1.SchemeGroupVersion.WithResource("namespaces"):   newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("configmaps"):   newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("secrets"):      newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("serviceaccounts"): newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("services"):     newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("deployments"):  newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("statefulsets"): newCapability(true, true, true),
-	appsv1.SchemeGroupVersion.WithResource("daemonsets"):   newCapability(true, true, true),
-	batchv1.SchemeGroupVersion.WithResource("jobs"):        newCapability(true, true, true),
-	batchv1.SchemeGroupVersion.WithResource("cronjobs"):    newCapability(true, true, true),
-	corev1.SchemeGroupVersion.WithResource("pods"):         newCapability(true, false, true, "logs", "exec", "attach", "portforward"),
-	corev1.SchemeGroupVersion.WithResource("events"):       newCapability(true, false, true),
+	corev1.SchemeGroupVersion.WithResource("namespaces"):            newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("configmaps"):            newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("secrets"):               newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("serviceaccounts"):       newCapability(true, true, true),
+	networkingv1.SchemeGroupVersion.WithResource("networkpolicies"): newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("services"):              newCapability(true, true, true),
+	appsv1.SchemeGroupVersion.WithResource("deployments"):           newCapability(true, true, true),
+	appsv1.SchemeGroupVersion.WithResource("statefulsets"):          newCapability(true, true, true),
+	appsv1.SchemeGroupVersion.WithResource("daemonsets"):            newCapability(true, true, true),
+	batchv1.SchemeGroupVersion.WithResource("jobs"):                 newCapability(true, true, true),
+	batchv1.SchemeGroupVersion.WithResource("cronjobs"):             newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("pods"):                  newCapability(true, false, true, "logs", "exec", "attach", "portforward"),
+	corev1.SchemeGroupVersion.WithResource("events"):                newCapability(true, false, true),
 }
 
 func newCapability(read, write, watch bool, connectSubs ...string) Capability {

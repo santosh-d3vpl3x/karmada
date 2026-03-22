@@ -21,6 +21,7 @@ import (
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
+	networkingv1 "k8s.io/api/networking/v1"
 )
 
 var deploymentsGVR = appsv1.SchemeGroupVersion.WithResource("deployments")
@@ -28,6 +29,7 @@ var eventsGVR = corev1.SchemeGroupVersion.WithResource("events")
 var namespacesGVR = corev1.SchemeGroupVersion.WithResource("namespaces")
 var podsGVR = corev1.SchemeGroupVersion.WithResource("pods")
 var serviceAccountsGVR = corev1.SchemeGroupVersion.WithResource("serviceaccounts")
+var networkPoliciesGVR = networkingv1.SchemeGroupVersion.WithResource("networkpolicies")
 
 func TestPhase1Matrix(t *testing.T) {
 	if !Supports(deploymentsGVR, "create") {
@@ -91,5 +93,24 @@ func TestServiceAccountCapabilityIsWritable(t *testing.T) {
 	}
 	if !Supports(serviceAccountsGVR, "create") {
 		t.Fatal("expected serviceaccount create support")
+	}
+}
+
+func TestNetworkPolicyCapabilityIsWritable(t *testing.T) {
+	capability, ok := CapabilityFor(networkPoliciesGVR)
+	if !ok {
+		t.Fatal("expected networkpolicy capability")
+	}
+	if !capability.Read {
+		t.Fatal("expected networkpolicy read support")
+	}
+	if !capability.Watch {
+		t.Fatal("expected networkpolicy watch support")
+	}
+	if !capability.Write {
+		t.Fatal("expected networkpolicy write support")
+	}
+	if !Supports(networkPoliciesGVR, "create") {
+		t.Fatal("expected networkpolicy create support")
 	}
 }
