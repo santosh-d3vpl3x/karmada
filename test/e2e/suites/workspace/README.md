@@ -64,6 +64,13 @@ The strongest no-cluster verification path on this branch is the offline discove
 - It skips cleanly when no `kubectl` binary is available in the current shell.
 - Set `WORKSPACE_KUBECTL_BIN=/path/to/kubectl` if you want to override which binary it uses.
 
+Run it like this when you want a real client-level check without a cluster:
+
+1. Confirm the kubectl binary the test will use: `command -v kubectl` or `WORKSPACE_KUBECTL_BIN=/path/to/kubectl command -v "$WORKSPACE_KUBECTL_BIN"`.
+2. Run `go test ./pkg/workspace -run TestWorkspaceOfflineKubectlDiscoverySmoke -count=1 -v`.
+3. Expect the test to pass only when the kubeconfig server points at the workspace proxy URL, not the apiserver root.
+4. If you want to verify the helper wiring too, run `go test ./test/e2e/framework -run TestRunWorkspaceKubectlUsesConfiguredBinary -count=1 -v`.
+
 ## Handoff Checklist
 
 When another person or machine has access to a real `local-up` environment, hand them this checklist:
