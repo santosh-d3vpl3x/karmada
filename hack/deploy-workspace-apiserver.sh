@@ -24,13 +24,22 @@ CERT_DIR=${CERT_DIR:-"${HOME}/.karmada"}
 REGISTRY=${REGISTRY:-"docker.io/karmada"}
 VERSION=${VERSION:-"latest"}
 BUILD_FROM_SOURCE=${BUILD_FROM_SOURCE:-"true"}
+WAIT_FOR_READY=${WAIT_FOR_READY:-"true"}
 WORKSPACE_APISERVER_IMAGE="${REGISTRY}/karmada-workspace-apiserver:${VERSION}"
+WORKSPACE_CERT_FILES=(
+  "karmada-workspace-apiserver.crt"
+  "karmada-workspace-apiserver.key"
+  "karmada-workspace-apiserver-client.crt"
+  "karmada-workspace-apiserver-client.key"
+  "karmada-workspace-apiserver-etcd-client.crt"
+  "karmada-workspace-apiserver-etcd-client.key"
+)
 
 function usage() {
   echo "This script deploys karmada-workspace-apiserver on a local-up Karmada host cluster."
   echo "Usage: hack/deploy-workspace-apiserver.sh <HOST_CLUSTER_KUBECONFIG> <HOST_CONTEXT_NAME> <KARMADA_APISERVER_KUBECONFIG> <KARMADA_APISERVER_CONTEXT_NAME>"
   echo "Example: hack/deploy-workspace-apiserver.sh ~/.kube/karmada.config karmada-host ~/.kube/karmada.config karmada-apiserver"
-  echo "Environment: BUILD_FROM_SOURCE=true|false (default true), REGISTRY=docker.io/karmada, VERSION=latest"
+  echo "Environment: BUILD_FROM_SOURCE=true|false (default true), WAIT_FOR_READY=true|false (default true), REGISTRY=docker.io/karmada, VERSION=latest"
 }
 
 if [[ $# -ne 4 ]]; then
@@ -44,26 +53,22 @@ KARMADA_APISERVER_KUBECONFIG=$3
 KARMADA_APISERVER_CONTEXT_NAME=$4
 
 if [[ ! -f "${HOST_CLUSTER_KUBECONFIG}" ]]; then
-  echo -e "ERROR: failed to get kubernetes config file: '${HOST_CLUSTER_KUBECONFIG}', not existed.
-"
+  echo -e "ERROR: failed to get kubernetes config file: '${HOST_CLUSTER_KUBECONFIG}', not existed.\n"
   usage
   exit 1
 fi
 if ! kubectl config get-contexts "${HOST_CONTEXT_NAME}" --kubeconfig="${HOST_CLUSTER_KUBECONFIG}" > /dev/null 2>&1; then
-  echo -e "ERROR: failed to get context: '${HOST_CONTEXT_NAME}' not in ${HOST_CLUSTER_KUBECONFIG}.
-"
+  echo -e "ERROR: failed to get context: '${HOST_CONTEXT_NAME}' not in ${HOST_CLUSTER_KUBECONFIG}.\n"
   usage
   exit 1
 fi
 if [[ ! -f "${KARMADA_APISERVER_KUBECONFIG}" ]]; then
-  echo -e "ERROR: failed to get kubernetes config file: '${KARMADA_APISERVER_KUBECONFIG}', not existed.
-"
+  echo -e "ERROR: failed to get kubernetes config file: '${KARMADA_APISERVER_KUBECONFIG}', not existed.\n"
   usage
   exit 1
 fi
 if ! kubectl config get-contexts "${KARMADA_APISERVER_CONTEXT_NAME}" --kubeconfig="${KARMADA_APISERVER_KUBECONFIG}" > /dev/null 2>&1; then
-  echo -e "ERROR: failed to get context: '${KARMADA_APISERVER_CONTEXT_NAME}' not in ${KARMADA_APISERVER_KUBECONFIG}.
-"
+  echo -e "ERROR: failed to get context: '${KARMADA_APISERVER_CONTEXT_NAME}' not in ${KARMADA_APISERVER_KUBECONFIG}.\n"
   usage
   exit 1
 fi
@@ -85,6 +90,16 @@ function recover_kubeconfig() {
 }
 trap recover_kubeconfig EXIT
 
+function workspace_cert_material_exists() {
+  local file
+  for file in "${WORKSPACE_CERT_FILES[@]}"; do
+    if [[ ! -f "${CERT_DIR}/${file}" ]]; then
+      return 1
+    fi
+  done
+  return 0
+}
+
 function create_workspace_cert_material() {
   util::cmd_must_exist_cfssl "v1.6.5"
 
@@ -98,6 +113,16 @@ function create_workspace_cert_material() {
   util::create_certkey "" "${CERT_DIR}" "ca" karmada-workspace-apiserver "system:karmada:karmada-workspace-apiserver" "" "${workspace_apiserver_alt_names[@]}"
   util::create_certkey "" "${CERT_DIR}" "ca" karmada-workspace-apiserver-client "system:karmada:karmada-workspace-apiserver" "system:masters"
   util::create_certkey "" "${CERT_DIR}" "ca" karmada-workspace-apiserver-etcd-client "system:karmada:karmada-workspace-apiserver-etcd-client" "system:masters"
+}
+
+function ensure_workspace_cert_material() {
+  if workspace_cert_material_exists; then
+    echo "Using existing workspace apiserver cert material from ${CERT_DIR}."
+    return
+  fi
+
+  echo "Generating workspace apiserver cert material in ${CERT_DIR}."
+  create_workspace_cert_material
 }
 
 function apply_secret_template() {
@@ -128,11 +153,23 @@ function deploy_workspace_secrets() {
   karmada_workspace_etcd_client_crt=$(base64 < "${CERT_DIR}/karmada-workspace-apiserver-etcd-client.crt" | tr -d '\r\n')
   karmada_workspace_etcd_client_key=$(base64 < "${CERT_DIR}/karmada-workspace-apiserver-etcd-client.key" | tr -d '\r\n')
 
-  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-config-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-config-secret.yaml"     '\${component}' 'karmada-workspace-apiserver'     '\${ca_crt}' "${karmada_ca}"     '\${client_crt}' "${karmada_workspace_client_crt}"     '\${client_key}' "${karmada_workspace_client_key}"
+  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-config-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-config-secret.yaml" \
+    '\${component}' 'karmada-workspace-apiserver' \
+    '\${ca_crt}' "${karmada_ca}" \
+    '\${client_crt}' "${karmada_workspace_client_crt}" \
+    '\${client_key}' "${karmada_workspace_client_key}"
 
-  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-cert-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-cert-secret.yaml"     '\${name}' 'karmada-workspace-apiserver'     '\${ca_crt}' "${karmada_ca}"     '\${tls_crt}' "${karmada_workspace_server_crt}"     '\${tls_key}' "${karmada_workspace_server_key}"
+  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-cert-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-cert-secret.yaml" \
+    '\${name}' 'karmada-workspace-apiserver' \
+    '\${ca_crt}' "${karmada_ca}" \
+    '\${tls_crt}' "${karmada_workspace_server_crt}" \
+    '\${tls_key}' "${karmada_workspace_server_key}"
 
-  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-cert-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-etcd-client-cert-secret.yaml"     '\${name}' 'karmada-workspace-apiserver-etcd-client'     '\${ca_crt}' "${karmada_ca}"     '\${tls_crt}' "${karmada_workspace_etcd_client_crt}"     '\${tls_key}' "${karmada_workspace_etcd_client_key}"
+  apply_secret_template "${REPO_ROOT}/artifacts/deploy/karmada-cert-secret.yaml" "${temp_dir}/karmada-workspace-apiserver-etcd-client-cert-secret.yaml" \
+    '\${name}' 'karmada-workspace-apiserver-etcd-client' \
+    '\${ca_crt}' "${karmada_ca}" \
+    '\${tls_crt}' "${karmada_workspace_etcd_client_crt}" \
+    '\${tls_key}' "${karmada_workspace_etcd_client_key}"
 }
 
 function build_and_load_workspace_apiserver_image() {
@@ -158,7 +195,7 @@ export KUBECONFIG="${HOST_CLUSTER_KUBECONFIG}"
 kubectl --context="${HOST_CONTEXT_NAME}" apply -f "${REPO_ROOT}/artifacts/deploy/namespace.yaml"
 
 build_and_load_workspace_apiserver_image
-create_workspace_cert_material
+ensure_workspace_cert_material
 
 TEMP_PATH=$(mktemp -d)
 trap 'rm -rf "${TEMP_PATH}"; recover_kubeconfig' EXIT
@@ -166,7 +203,11 @@ trap 'rm -rf "${TEMP_PATH}"; recover_kubeconfig' EXIT
 deploy_workspace_secrets "${TEMP_PATH}"
 rendered_workspace_manifest=$(render_workspace_apiserver_manifest "${TEMP_PATH}")
 kubectl --context="${HOST_CONTEXT_NAME}" apply -f "${rendered_workspace_manifest}"
-util::wait_pod_ready "${HOST_CONTEXT_NAME}" "${KARMADA_WORKSPACE_APISERVER_LABEL}" "${KARMADA_SYSTEM_NAMESPACE}"
+if [[ "${WAIT_FOR_READY}" == "true" ]]; then
+  util::wait_pod_ready "${HOST_CONTEXT_NAME}" "${KARMADA_WORKSPACE_APISERVER_LABEL}" "${KARMADA_SYSTEM_NAMESPACE}"
+else
+  echo "Skipping workspace apiserver pod readiness wait because WAIT_FOR_READY=${WAIT_FOR_READY}."
+fi
 
 workspace_ca=$(base64 < "${CERT_DIR}/ca.crt" | tr -d '\r\n')
 cp "${REPO_ROOT}/artifacts/deploy/karmada-workspace-apiserver-apiservice.yaml" "${TEMP_PATH}/karmada-workspace-apiserver-apiservice.yaml"
@@ -174,6 +215,10 @@ sed -i'' -e "s/{{caBundle}}/${workspace_ca}/g" "${TEMP_PATH}/karmada-workspace-a
 
 export KUBECONFIG="${KARMADA_APISERVER_KUBECONFIG}"
 kubectl --context="${KARMADA_APISERVER_CONTEXT_NAME}" apply -f "${TEMP_PATH}/karmada-workspace-apiserver-apiservice.yaml"
-util::wait_apiservice_ready "${KARMADA_APISERVER_CONTEXT_NAME}" "${KARMADA_WORKSPACE_APISERVER_LABEL}"
+if [[ "${WAIT_FOR_READY}" == "true" ]]; then
+  util::wait_apiservice_ready "${KARMADA_APISERVER_CONTEXT_NAME}" "${KARMADA_WORKSPACE_APISERVER_LABEL}"
+else
+  echo "Skipping workspace APIService readiness wait because WAIT_FOR_READY=${WAIT_FOR_READY}."
+fi
 
 echo "Karmada workspace apiserver is deployed successfully."

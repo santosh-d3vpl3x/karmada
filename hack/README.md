@@ -48,7 +48,11 @@ ensures development quality.
   Scheduler Estimator to the specific cluster together. If applied, there is no need to use the extra `deploy-karmada-agent.sh`
   and `deploy-scheduler-estimator.sh` script.
 
-- [`deploy-workspace-apiserver.sh`](deploy-workspace-apiserver.sh) This script deploys the opt-in workspace API server on top of a local-up Karmada environment, builds and loads the current `karmada-workspace-apiserver` image into the host kind cluster by default, and registers the workspace APIService so `karmadactl workspace kubeconfig`, workspace `kubectl`, and `k9s` flows can be verified against a real endpoint.
+- [`deploy-workspace-apiserver.sh`](deploy-workspace-apiserver.sh) This script deploys the opt-in workspace API server on top of a local-up Karmada environment, builds and loads the current `karmada-workspace-apiserver` image into the host kind cluster by default, reuses pre-generated workspace cert material when it already exists, and registers the workspace APIService so `karmadactl workspace kubeconfig`, workspace `kubectl`, and `k9s` flows can be verified against a real endpoint.
+
+- [`undeploy-workspace-apiserver.sh`](undeploy-workspace-apiserver.sh) This script removes the opt-in workspace API server, deletes its secrets and APIService registration, and cleans up the workspace-specific cert files from `${HOME}/.karmada`.
+
+- [`verify-workspace-local-up.sh`](verify-workspace-local-up.sh) This script wraps the recommended local-up verification path: deploy the workspace API server, run `go test ./test/e2e/suites/workspace -count=1`, optionally run the workspace Ginkgo suite, and print the follow-up `karmadactl`/`kubectl`/`k9s` commands for manual smoke checks.
 
 - [`undeploy-karmada.sh`](undeploy-karmada.sh) This script will uninstall Karmada from the specific cluster.
   It will uninstall Karmada from your local environment default. If you installed Karmada with `remote-up-karmada.sh`,

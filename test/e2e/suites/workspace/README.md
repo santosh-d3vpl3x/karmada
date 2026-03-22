@@ -38,9 +38,11 @@ For laptop verification without a pre-existing cluster:
 2. Export `KUBECONFIG=$HOME/.kube/karmada.config`.
 3. Make sure `docker`, `kind`, and `cfssl` are available, and build `karmadactl` if `$(go env GOPATH)/bin/karmadactl` is not already present.
 4. Deploy the workspace apiserver with `hack/deploy-workspace-apiserver.sh $HOME/.kube/karmada.config karmada-host $HOME/.kube/karmada.config karmada-apiserver`.
-5. If you need a non-default image tag or registry, set `REGISTRY`, `VERSION`, or `BUILD_FROM_SOURCE=false` before the deploy step.
-6. Run `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`.
-7. Generate a workspace kubeconfig with `karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig` and use it with `kubectl` or `k9s`.
+5. If you need a non-default image tag or registry, set `REGISTRY`, `VERSION`, `BUILD_FROM_SOURCE=false`, or `WAIT_FOR_READY=false` before the deploy step.
+6. Run `hack/verify-workspace-local-up.sh <workspace>` if you want the scripted deploy plus test flow instead of stepping through the remaining commands manually.
+7. Run `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`.
+8. Generate a workspace kubeconfig with `karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig` and use it with `kubectl` or `k9s`.
+9. Clean up with `hack/undeploy-workspace-apiserver.sh $HOME/.kube/karmada.config karmada-host $HOME/.kube/karmada.config karmada-apiserver` when you are done.
 
 The suite assumes all of the following are true:
 
@@ -52,6 +54,27 @@ The suite assumes all of the following are true:
 - `WORKSPACE_E2E_AMBIGUOUS_POD` names a known ambiguous workspace-visible pod when running the ambiguity inspection and explicit-target-selection checks
 
 If those prerequisites are not met, the suite skips instead of pretending the current workspace surface works.
+
+## Offline Kubectl Smoke
+
+The strongest no-cluster verification path on this branch is the offline discovery smoke in `pkg/workspace`.
+
+- `go test ./pkg/workspace -run TestWorkspaceOfflineKubectlDiscoverySmoke -count=1`
+- The test boots the workspace apiserver with `httptest`, writes a temporary kubeconfig, and shells out to `kubectl api-resources -o name`.
+- It skips cleanly when no `kubectl` binary is available in the current shell.
+- Set `WORKSPACE_KUBECTL_BIN=/path/to/kubectl` if you want to override which binary it uses.
+
+## Handoff Checklist
+
+When another person or machine has access to a real `local-up` environment, hand them this checklist:
+
+1. Run `hack/local-up-karmada.sh`.
+2. Run `hack/verify-workspace-local-up.sh <workspace>`.
+3. Confirm whether the Ginkgo run exercised live specs or only skipped because `KUBECONFIG` or workspace readiness was missing.
+4. Run `KUBECONFIG=$HOME/.kube/karmada.config karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig`.
+5. Run `kubectl --kubeconfig /tmp/<workspace>.kubeconfig api-resources` and confirm unsupported surfaces such as `nodes`, `clusterroles`, and CRDs stay absent.
+6. Run `k9s --kubeconfig /tmp/<workspace>.kubeconfig` and walk the manual smoke checklist below.
+7. Run `hack/undeploy-workspace-apiserver.sh $HOME/.kube/karmada.config karmada-host $HOME/.kube/karmada.config karmada-apiserver` after the session.
 
 ## Manual `k9s` Smoke Checklist
 

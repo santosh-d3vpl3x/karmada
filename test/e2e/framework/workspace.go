@@ -31,6 +31,9 @@ import (
 
 const workspaceProxyURLFormat = "%s/apis/workspace.karmada.io/v1alpha1/workspaces/%s/proxy/"
 
+// WorkspaceKubectlBinEnv overrides the kubectl binary used by workspace smoke helpers.
+const WorkspaceKubectlBinEnv = "WORKSPACE_KUBECTL_BIN"
+
 // WorkspaceAccess captures the minimum files and endpoint shape needed for workspace e2e.
 type WorkspaceAccess struct {
 	Name           string
@@ -73,13 +76,27 @@ func RunWorkspaceKubectlWithInput(kubeconfigPath string, stdin io.Reader, args .
 	return string(output), err
 }
 
+// WorkspaceKubectlBinary returns the kubectl binary used by workspace smoke helpers.
+func WorkspaceKubectlBinary() string {
+	if bin := os.Getenv(WorkspaceKubectlBinEnv); bin != "" {
+		return bin
+	}
+	return "kubectl"
+}
+
+// LookupWorkspaceKubectl resolves the kubectl binary used by workspace smoke helpers.
+func LookupWorkspaceKubectl() (string, error) {
+	return exec.LookPath(WorkspaceKubectlBinary())
+}
+
 // NewWorkspaceKubectlCommand returns a kubectl command for the generated workspace kubeconfig.
 func NewWorkspaceKubectlCommand(ctx context.Context, kubeconfigPath string, args ...string) *exec.Cmd {
 	cmdArgs := append([]string{"--kubeconfig", kubeconfigPath}, args...)
+	kubectlBin := WorkspaceKubectlBinary()
 	if ctx != nil {
-		return exec.CommandContext(ctx, "kubectl", cmdArgs...) //nolint:gosec
+		return exec.CommandContext(ctx, kubectlBin, cmdArgs...) //nolint:gosec
 	}
-	return exec.Command("kubectl", cmdArgs...) //nolint:gosec
+	return exec.Command(kubectlBin, cmdArgs...) //nolint:gosec
 }
 
 // RunWorkspaceKarmadactl runs karmadactl against the control-plane kubeconfig.

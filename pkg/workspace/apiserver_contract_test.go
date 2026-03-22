@@ -25,6 +25,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -51,6 +53,7 @@ import (
 	"github.com/karmada-io/karmada/pkg/workspace/facade"
 	"github.com/karmada-io/karmada/pkg/workspace/index"
 	"github.com/karmada-io/karmada/pkg/workspace/live"
+	framework "github.com/karmada-io/karmada/test/e2e/framework"
 )
 
 func TestWorkspaceAPIServerRootDiscoveryAdvertisesWorkspaceResources(t *testing.T) {
@@ -65,6 +68,51 @@ func TestWorkspaceAPIServerRootDiscoveryAdvertisesWorkspaceResources(t *testing.
 	}
 	if !containsResource(resources, workspacev1alpha1.ResourcePluralWorkspace+"/proxy") {
 		t.Fatalf("expected %s/proxy in discovery", workspacev1alpha1.ResourcePluralWorkspace)
+	}
+}
+
+func TestWorkspaceOfflineKubectlDiscoverySmoke(t *testing.T) {
+	kubectlPath, err := framework.LookupWorkspaceKubectl()
+	if err != nil {
+		t.Skipf("workspace kubectl smoke requires kubectl: %v", err)
+	}
+	t.Setenv(framework.WorkspaceKubectlBinEnv, kubectlPath)
+
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
+	kubeconfigPath := filepath.Join(t.TempDir(), "workspace-offline.kubeconfig")
+	kubeconfig := fmt.Sprintf(`apiVersion: v1
+kind: Config
+clusters:
+- name: workspace
+  cluster:
+    server: %s
+contexts:
+- name: workspace
+  context:
+    cluster: workspace
+    user: workspace
+current-context: workspace
+users:
+- name: workspace
+  user: {}
+`, server.URL)
+	if err := os.WriteFile(kubeconfigPath, []byte(kubeconfig), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	output, err := framework.RunWorkspaceKubectl(kubeconfigPath, "api-resources", "-o", "name")
+	if err != nil {
+		t.Fatalf("kubectl api-resources failed: %v\n%s", err, output)
+	}
+	for _, want := range []string{"namespaces", "pods", "deployments.apps", "jobs.batch", "ingresses.networking.k8s.io", "rolebindings.rbac.authorization.k8s.io"} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected kubectl discovery output to contain %q, got:\n%s", want, output)
+		}
+	}
+	for _, unwanted := range []string{"nodes", "clusterroles.rbac.authorization.k8s.io", "customresourcedefinitions.apiextensions.k8s.io"} {
+		if strings.Contains(output, unwanted) {
+			t.Fatalf("did not expect kubectl discovery output to contain %q, got:\n%s", unwanted, output)
+		}
 	}
 }
 
