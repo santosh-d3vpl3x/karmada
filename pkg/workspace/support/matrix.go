@@ -36,7 +36,7 @@ type Capability struct {
 }
 
 var phase1Matrix = map[schema.GroupVersionResource]Capability{
-	corev1.SchemeGroupVersion.WithResource("namespaces"):   newCapability(true, true, true),
+	corev1.SchemeGroupVersion.WithResource("namespaces"):   newCapability(true, false, true),
 	corev1.SchemeGroupVersion.WithResource("configmaps"):   newCapability(true, true, true),
 	corev1.SchemeGroupVersion.WithResource("secrets"):      newCapability(true, true, true),
 	corev1.SchemeGroupVersion.WithResource("services"):     newCapability(true, true, true),

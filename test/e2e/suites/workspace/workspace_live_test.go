@@ -37,22 +37,30 @@ import (
 )
 
 func workspaceRawGET(access framework.WorkspaceAccess, path string) (*http.Response, error) {
+	return workspaceRawRequest(access, http.MethodGet, path, nil, "")
+}
+
+func workspaceRawRequest(access framework.WorkspaceAccess, method, path string, body io.Reader, contentType string) (*http.Response, error) {
 	config, err := framework.LoadWorkspaceRESTClientConfig(access.KubeconfigPath)
 	if err != nil {
 		return nil, err
 	}
-	return rawGET(config, path)
+	return rawRequest(config, method, path, body, contentType)
 }
 
 func controlPlaneRawGET(path string) (*http.Response, error) {
+	return controlPlaneRawRequest(http.MethodGet, path, nil, "")
+}
+
+func controlPlaneRawRequest(method, path string, body io.Reader, contentType string) (*http.Response, error) {
 	config, err := framework.LoadRESTClientConfig(kubeconfig, karmadaContext)
 	if err != nil {
 		return nil, err
 	}
-	return rawGET(config, path)
+	return rawRequest(config, method, path, body, contentType)
 }
 
-func rawGET(config *rest.Config, path string) (*http.Response, error) {
+func rawRequest(config *rest.Config, method, path string, body io.Reader, contentType string) (*http.Response, error) {
 	transport, err := rest.TransportFor(config)
 	if err != nil {
 		return nil, err
@@ -60,7 +68,14 @@ func rawGET(config *rest.Config, path string) (*http.Response, error) {
 
 	client := &http.Client{Transport: transport, Timeout: 30 * time.Second}
 	url := strings.TrimSuffix(config.Host, "/") + "/" + strings.TrimPrefix(path, "/")
-	return client.Get(url)
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	return client.Do(req)
 }
 
 func readWorkspaceResponseBody(resp *http.Response) string {

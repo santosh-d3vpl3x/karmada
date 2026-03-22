@@ -267,6 +267,10 @@ func (h *workspaceProxyHandler) serveResource(rw http.ResponseWriter, req *http.
 		writeAPIError(rw, workspacestorage.NewUnsupportedRequestError(info.Resource, info.Verb))
 		return
 	}
+	if isLogicalNamespaceResource(info.Resource) {
+		h.serveLogicalNamespaces(rw, req, info)
+		return
+	}
 	if isProjectedRuntimeResource(info.Resource) {
 		h.serveProjectedRuntime(rw, req, info)
 		return
@@ -310,6 +314,47 @@ func (h *workspaceProxyHandler) serveSubresource(rw http.ResponseWriter, req *ht
 		return
 	}
 	handler.ServeHTTP(rw, req.WithContext(ctx))
+}
+
+func (h *workspaceProxyHandler) serveLogicalNamespaces(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo) {
+	if info.Name == "" || info.Verb != "get" {
+		h.forwardDesiredState(rw, req, info)
+		return
+	}
+
+	namespace, err := h.lookupLogicalNamespace(req.Context(), info)
+	if err != nil {
+		writeAPIError(rw, err)
+		return
+	}
+	writeJSON(rw, http.StatusOK, namespace)
+}
+
+func (h *workspaceProxyHandler) lookupLogicalNamespace(ctx context.Context, info *workspaceRequestInfo) (*corev1.Namespace, error) {
+	resp, err := h.doDesiredStateRequest(ctx, http.MethodGet, coreV1.String(), corev1.SchemeGroupVersion.WithResource("namespaces").Resource, url.Values{
+		"fieldSelector": []string{mergeFieldSelector("", "metadata.name="+info.Name)},
+		"labelSelector": []string{mergeLabelSelector("", facade.LabelWorkspaceName+"="+info.Workspace)},
+	}, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, decodeDesiredStateError(resp.Body, resp.StatusCode)
+	}
+
+	list := &corev1.NamespaceList{}
+	if err := json.NewDecoder(resp.Body).Decode(list); err != nil {
+		return nil, err
+	}
+	for i := range list.Items {
+		if list.Items[i].Name == info.Name {
+			namespace := list.Items[i].DeepCopy()
+			return namespace, nil
+		}
+	}
+	return nil, apierrors.NewNotFound(corev1.Resource("namespaces"), info.Name)
 }
 
 func (h *workspaceProxyHandler) serveProjectedRuntime(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo) {
@@ -361,6 +406,46 @@ func (h *workspaceProxyHandler) serveProjectedStorage(rw http.ResponseWriter, ct
 	writeJSON(rw, http.StatusOK, obj)
 }
 
+func (h *workspaceProxyHandler) doDesiredStateRequest(ctx context.Context, method, apiGroupVersion, resource string, query url.Values, headers http.Header, body []byte) (*http.Response, error) {
+	if h.backendURL == nil {
+		return nil, fmt.Errorf("desired-state backend is not configured")
+	}
+
+	target := *h.backendURL
+	requestPath := "/api/" + apiGroupVersion + "/" + resource
+	if apiGroupVersion != coreV1.String() {
+		requestPath = "/apis/" + apiGroupVersion + "/" + resource
+	}
+	target.Path = joinURLPath(target.Path, requestPath)
+	if query != nil {
+		target.RawQuery = query.Encode()
+	}
+
+	outbound, err := http.NewRequestWithContext(ctx, method, target.String(), bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	copyHeaders(outbound.Header, headers)
+	outbound.ContentLength = int64(len(body))
+
+	client := &http.Client{Transport: h.backendTransport}
+	return client.Do(outbound)
+}
+
+func decodeDesiredStateError(body io.Reader, statusCode int) error {
+	status := &metav1.Status{}
+	if err := json.NewDecoder(body).Decode(status); err == nil && status.Kind == "Status" {
+		return apierrors.FromObject(status)
+	}
+	return &apierrors.StatusError{ErrStatus: metav1.Status{
+		TypeMeta: metav1.TypeMeta{APIVersion: "v1", Kind: "Status"},
+		Status:   metav1.StatusFailure,
+		Code:     int32(statusCode),
+		Reason:   metav1.StatusReasonUnknown,
+		Message:  fmt.Sprintf("desired-state backend returned status %d", statusCode),
+	}}
+}
+
 func (h *workspaceProxyHandler) forwardDesiredState(rw http.ResponseWriter, req *http.Request, info *workspaceRequestInfo) {
 	if h.backendURL == nil {
 		writeAPIError(rw, fmt.Errorf("desired-state backend is not configured"))
@@ -373,25 +458,13 @@ func (h *workspaceProxyHandler) forwardDesiredState(rw http.ResponseWriter, req 
 		return
 	}
 
-	target := *h.backendURL
-	target.Path = joinURLPath(target.Path, info.Path)
 	query := req.URL.Query()
 	if info.Name == "" && (info.Verb == "list" || info.Verb == "watch") {
 		query = cloneValues(query)
 		query.Set("labelSelector", mergeLabelSelector(query.Get("labelSelector"), facade.LabelWorkspaceName+"="+info.Workspace))
 	}
-	target.RawQuery = query.Encode()
 
-	outbound, err := http.NewRequestWithContext(req.Context(), req.Method, target.String(), bytes.NewReader(body))
-	if err != nil {
-		writeAPIError(rw, err)
-		return
-	}
-	copyHeaders(outbound.Header, req.Header)
-	outbound.ContentLength = int64(len(body))
-
-	client := &http.Client{Transport: h.backendTransport}
-	resp, err := client.Do(outbound)
+	resp, err := h.doDesiredStateRequest(req.Context(), req.Method, info.APIGroupVersion(), info.PathResource(), query, req.Header, body)
 	if err != nil {
 		writeAPIError(rw, err)
 		return
@@ -634,6 +707,24 @@ func kindFor(gvr schema.GroupVersionResource) string {
 	}
 }
 
+func (info *workspaceRequestInfo) APIGroupVersion() string {
+	if info.APIGroup == "" {
+		return info.APIVersion
+	}
+	return info.APIGroup + "/" + info.APIVersion
+}
+
+func (info *workspaceRequestInfo) PathResource() string {
+	if info.Namespace == "" {
+		return info.Resource.Resource
+	}
+	return path.Join("namespaces", info.Namespace, info.Resource.Resource)
+}
+
+func isLogicalNamespaceResource(resource schema.GroupVersionResource) bool {
+	return resource == corev1.SchemeGroupVersion.WithResource("namespaces")
+}
+
 func requestVerb(method string, hasName, hasSubresource, isWatch bool) string {
 	if hasSubresource {
 		return "connect"
@@ -697,6 +788,13 @@ func mergeLabelSelector(existing, workspaceSelector string) string {
 		return workspaceSelector
 	}
 	return existing + "," + workspaceSelector
+}
+
+func mergeFieldSelector(existing, selector string) string {
+	if existing == "" {
+		return selector
+	}
+	return existing + "," + selector
 }
 
 func cloneValues(in url.Values) url.Values {

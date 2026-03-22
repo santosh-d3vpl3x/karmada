@@ -9,11 +9,12 @@ The suite is intentionally honest about environmental readiness.
 - `go test ./test/e2e/suites/workspace -count=1` verifies the suite compiles and skips cleanly when the current cluster does not expose a workspace-capable endpoint.
 - `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m` runs the kubectl compatibility checks when the environment can actually serve the workspace surface exercised by this branch.
 
-The automated suite covers the phase-1 baseline plus the currently implemented Phase-2 debug additions:
+The automated suite covers the currently implemented workspace surface on this branch:
 
 - workspace kubeconfig generation through `karmadactl workspace kubeconfig`
-- `kubectl api-resources` over the supported phase-1 surface only
-- CRUD-oriented flows for the writable phase-1 resources
+- `kubectl api-resources` over the supported workspace surface
+- read-only logical namespace visibility through the workspace API
+- CRUD-oriented flows for the remaining writable desired-state resources after out-of-band namespace bootstrap
 - `kubectl get pods`
 - `kubectl get events`
 - `kubectl get -w` on a supported resource
@@ -32,12 +33,13 @@ The suite assumes all of the following are true:
 
 - `KUBECONFIG` points at a Karmada control-plane kubeconfig
 - `$(go env GOPATH)/bin/karmadactl` exists
-- the target environment publishes the workspace proxy endpoint and truthful phase-1 discovery
-- desired-state writes, projected runtime reads, and live pod subresources are wired in the deployed workspace apiserver
+- the target environment publishes the workspace proxy endpoint and truthful workspace discovery
+- control-plane access can bootstrap a workspace-visible namespace for the test workspace
+- desired-state writes for supported namespaced resources, projected runtime reads, and live pod subresources are wired in the deployed workspace apiserver
 - the control-plane kubeconfig can reach `placementviews.workspace.karmada.io` read endpoints when the phase-2 debug surface is deployed
 - `WORKSPACE_E2E_AMBIGUOUS_POD` names a known ambiguous workspace-visible pod when running the ambiguity inspection and explicit-target-selection checks
 
-If those prerequisites are not met, the suite skips instead of pretending the phase-1 surface works.
+If those prerequisites are not met, the suite skips instead of pretending the current workspace surface works.
 
 ## Manual `k9s` Smoke Checklist
 
@@ -45,7 +47,7 @@ If those prerequisites are not met, the suite skips instead of pretending the ph
 
 1. Generate a workspace kubeconfig with `karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig`.
 2. Launch `k9s --kubeconfig /tmp/<workspace>.kubeconfig`.
-3. Confirm the default views show namespaces, workloads, pods, and events without exposing unsupported cluster-scoped surfaces such as nodes.
+3. Confirm the default views show the read-only logical namespace view, workloads, pods, and events without exposing unsupported cluster-scoped surfaces such as nodes.
 4. Navigate from a workload to a pod and verify log viewing works on the supported workload surface.
 5. Verify shell and port-forward actions behave normally for a uniquely resolved pod target.
 6. If an intentionally ambiguous live target is available, confirm the operation fails explicitly instead of silently selecting a backing cluster.

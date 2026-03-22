@@ -25,6 +25,7 @@ import (
 
 var deploymentsGVR = appsv1.SchemeGroupVersion.WithResource("deployments")
 var eventsGVR = corev1.SchemeGroupVersion.WithResource("events")
+var namespacesGVR = corev1.SchemeGroupVersion.WithResource("namespaces")
 var podsGVR = corev1.SchemeGroupVersion.WithResource("pods")
 
 func TestPhase1Matrix(t *testing.T) {
@@ -51,5 +52,24 @@ func TestPodCapabilityIncludesPhase1LiveSubresources(t *testing.T) {
 	}
 	if SupportsSubresource(podsGVR, "proxy") {
 		t.Fatal("did not expect pod proxy support in phase 1")
+	}
+}
+
+func TestNamespaceCapabilityIsReadOnly(t *testing.T) {
+	capability, ok := CapabilityFor(namespacesGVR)
+	if !ok {
+		t.Fatal("expected namespace capability")
+	}
+	if !capability.Read {
+		t.Fatal("expected namespace read support")
+	}
+	if !capability.Watch {
+		t.Fatal("expected namespace watch support")
+	}
+	if capability.Write {
+		t.Fatal("namespace view must remain read-only")
+	}
+	if Supports(namespacesGVR, "create") {
+		t.Fatal("did not expect namespace create support")
 	}
 }

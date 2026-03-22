@@ -91,6 +91,29 @@ func TestWorkspaceDiscoveryOnlyAdvertisesSupportedResources(t *testing.T) {
 	}
 }
 
+func TestWorkspaceNamespaceDiscoveryAdvertisesReadOnlyLogicalView(t *testing.T) {
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
+
+	coreResources := discoverAPIResources(t, server, workspaceProxyPath("team-a", "/api/v1"))
+	resource, ok := apiResourceByName(coreResources, "namespaces")
+	if !ok {
+		t.Fatal("expected namespaces in workspace core discovery")
+	}
+	if resource.Namespaced {
+		t.Fatal("namespace view must remain cluster-scoped")
+	}
+	for _, verb := range []string{"get", "list", "watch"} {
+		if !containsString(resource.Verbs, verb) {
+			t.Fatalf("expected namespace discovery verb %q", verb)
+		}
+	}
+	for _, verb := range []string{"create", "update", "patch", "delete", "deletecollection"} {
+		if containsString(resource.Verbs, verb) {
+			t.Fatalf("did not expect namespace discovery verb %q", verb)
+		}
+	}
+}
+
 func TestWorkspaceWriteCompilesDesiredStateMetadata(t *testing.T) {
 	backend := newRecordingBackend(t)
 	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{backend: backend})
@@ -140,6 +163,48 @@ func TestWorkspaceUnsupportedVerbContract(t *testing.T) {
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusMethodNotAllowed {
 		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
+func TestWorkspaceNamespaceWriteContract(t *testing.T) {
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: defaultRuntimeState()})
+
+	resp := doJSONRequest(t, server, http.MethodPost, workspaceProxyPath("team-a", "/api/v1/namespaces"), []byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"demo"}}`))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusMethodNotAllowed {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+}
+
+func TestWorkspaceNamespaceGetHonorsWorkspaceScope(t *testing.T) {
+	backend := httptest.NewServer(http.HandlerFunc(func(rw http.ResponseWriter, req *http.Request) {
+		rw.Header().Set("Content-Type", "application/json")
+		switch req.URL.Path {
+		case "/api/v1/namespaces/demo":
+			_ = json.NewEncoder(rw).Encode(&corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "demo"}})
+		case "/api/v1/namespaces":
+			_ = json.NewEncoder(rw).Encode(&corev1.NamespaceList{})
+		default:
+			rw.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer backend.Close()
+
+	backendURL, err := url.Parse(backend.URL)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{
+		runtimeState:     defaultRuntimeState(),
+		backendURL:       backendURL,
+		backendTransport: backend.Client().Transport,
+	})
+
+	resp := doRequest(t, server, http.MethodGet, workspaceProxyPath("team-a", "/api/v1/namespaces/demo"), nil, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusNotFound {
+		payload, _ := io.ReadAll(resp.Body)
+		t.Fatalf("got %d: %s", resp.StatusCode, strings.TrimSpace(string(payload)))
 	}
 }
 
@@ -204,9 +269,11 @@ func TestWorkspaceWatchContract(t *testing.T) {
 }
 
 type testWorkspaceServerOptions struct {
-	backend      *recordingBackend
-	runtimeState *testRuntimeState
-	authorizer   func(string, *workspaceRequestInfo) error
+	backend          *recordingBackend
+	backendURL       *url.URL
+	backendTransport http.RoundTripper
+	runtimeState     *testRuntimeState
+	authorizer       func(string, *workspaceRequestInfo) error
 }
 
 type recordingBackend struct {
@@ -331,6 +398,10 @@ func newTestWorkspaceServer(t *testing.T, opts testWorkspaceServerOptions) *http
 	if opts.backend != nil {
 		cfg.ExtraConfig.DesiredStateBackendURL = opts.backend.url(t)
 		cfg.ExtraConfig.DesiredStateTransport = opts.backend.server.Client().Transport
+	}
+	if opts.backendURL != nil {
+		cfg.ExtraConfig.DesiredStateBackendURL = opts.backendURL
+		cfg.ExtraConfig.DesiredStateTransport = opts.backendTransport
 	}
 
 	server, err := cfg.New()
@@ -483,4 +554,22 @@ func TestWorkspacePlacementViewReturnsDebugState(t *testing.T) {
 	if len(view.Status.EligibleClusters) != 2 {
 		t.Fatalf("got %d eligible clusters", len(view.Status.EligibleClusters))
 	}
+}
+
+func apiResourceByName(resources []metav1.APIResource, name string) (metav1.APIResource, bool) {
+	for _, resource := range resources {
+		if resource.Name == name {
+			return resource, true
+		}
+	}
+	return metav1.APIResource{}, false
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
