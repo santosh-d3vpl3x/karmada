@@ -71,6 +71,22 @@ Run it like this when you want a real client-level check without a cluster:
 3. Expect the test to pass only when the kubeconfig server points at the workspace proxy URL, not the apiserver root.
 4. If you want to verify the helper wiring too, run `go test ./test/e2e/framework -run TestRunWorkspaceKubectlUsesConfiguredBinary -count=1 -v`.
 
+## Real Karmada Cluster Verification Flow
+
+Use this when you already have a reachable Karmada control plane instead of `local-up`. The important distinction is that the workspace apiserver must already be deployed and registered on that control plane before any workspace kubeconfig can work. This branch does not yet ship a polished generic remote installer for that component beyond the `local-up` helper.
+
+1. Point `KUBECONFIG` at the real Karmada control-plane kubeconfig: `export KUBECONFIG=/path/to/karmada.config`.
+2. Confirm the workspace APIService is registered and available: `kubectl get apiservice v1alpha1.workspace.karmada.io`.
+3. Confirm the control plane serves the workspace API group: `kubectl get --raw /apis/workspace.karmada.io/v1alpha1`.
+4. Make sure `karmadactl` can talk to that same control plane: `karmadactl workspace list` or another harmless read command against the same kubeconfig.
+5. Generate a workspace kubeconfig: `KUBECONFIG=/path/to/karmada.config karmadactl workspace kubeconfig <workspace> > /tmp/<workspace>.kubeconfig`.
+6. Run the real client smoke: `kubectl --kubeconfig /tmp/<workspace>.kubeconfig api-resources`, `kubectl --kubeconfig /tmp/<workspace>.kubeconfig get namespaces`, `kubectl --kubeconfig /tmp/<workspace>.kubeconfig get pods -A`, and `kubectl --kubeconfig /tmp/<workspace>.kubeconfig get events -A`.
+7. Confirm unsupported surfaces stay absent from discovery, especially `nodes`, `clusterroles`, and CRD APIs that this branch does not advertise.
+8. Run the automated suite against the real control plane: `go test ./test/e2e/suites/workspace -count=1` and, if `ginkgo` is installed, `ginkgo -v ./test/e2e/suites/workspace -- --poll-interval=5s --poll-timeout=5m`.
+9. Launch `k9s --kubeconfig /tmp/<workspace>.kubeconfig` and walk the manual smoke checklist below.
+
+If step 2 or step 3 fails, stop there. That means the real cluster is missing workspace-apiserver deployment or APIService wiring, so client verification would be misleading.
+
 ## Handoff Checklist
 
 When another person or machine has access to a real `local-up` environment, hand them this checklist:
