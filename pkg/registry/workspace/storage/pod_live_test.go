@@ -35,8 +35,10 @@ import (
 )
 
 type fakeLiveResolver struct {
-	target live.Target
-	err    error
+	target     live.Target
+	targets    []live.Target
+	err        error
+	inspectErr error
 }
 
 func (f fakeLiveResolver) ResolveLiveTarget(live.Request) (live.Target, error) {
@@ -44,6 +46,13 @@ func (f fakeLiveResolver) ResolveLiveTarget(live.Request) (live.Target, error) {
 		return live.Target{}, f.err
 	}
 	return f.target, nil
+}
+
+func (f fakeLiveResolver) InspectLiveTargets(live.Request) (live.Inspection, error) {
+	if f.inspectErr != nil {
+		return live.Inspection{}, f.inspectErr
+	}
+	return live.Inspection{Candidates: append([]live.Target(nil), f.targets...), Ambiguous: len(f.targets) > 1}, nil
 }
 
 type fakeLiveConnector struct {
@@ -139,5 +148,36 @@ func TestPodRESTRejectsUnsupportedSubresource(t *testing.T) {
 	_, err := rest.Connect(req.Context(), "demo", nil, utiltest.NewResponder(httptest.NewRecorder()))
 	if !apierrors.IsNotFound(err) {
 		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestPodRESTConnectHonorsExplicitClusterSelection(t *testing.T) {
+	connector := &fakeLiveConnector{}
+	rest := NewPodREST(fakeLiveResolver{target: live.Target{Cluster: "member-b"}}, connector)
+
+	req := newPodLiveRequest(t, "logs")
+	req.URL.RawQuery = "targetCluster=member-b"
+	ctx := WithLiveRequestOptions(req.Context(), req.URL.Query())
+	_, err := rest.Connect(ctx, "demo", nil, utiltest.NewResponder(httptest.NewRecorder()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if connector.req.Selector.Cluster != "member-b" {
+		t.Fatalf("got selector %q", connector.req.Selector.Cluster)
+	}
+}
+
+func TestPodRESTInspectReturnsCandidates(t *testing.T) {
+	rest := NewPodREST(fakeLiveResolver{targets: []live.Target{{Cluster: "member-a"}, {Cluster: "member-b"}}}, &fakeLiveConnector{})
+
+	req := newPodLiveRequest(t, "logs")
+	req.URL.RawQuery = "inspect=1"
+	ctx := WithLiveRequestOptions(req.Context(), req.URL.Query())
+	inspection, err := rest.Inspect(ctx, "demo")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Candidates) != 2 {
+		t.Fatalf("got %d candidates", len(inspection.Candidates))
 	}
 }

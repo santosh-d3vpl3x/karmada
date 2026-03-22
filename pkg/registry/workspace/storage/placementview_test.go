@@ -25,7 +25,7 @@ import (
 )
 
 func TestPlacementViewRESTMetadata(t *testing.T) {
-	rest := NewPlacementViewREST()
+	rest := NewPlacementViewREST(nil, nil)
 	if rest.NamespaceScoped() {
 		t.Fatal("expected cluster-scoped placement view storage")
 	}
@@ -35,15 +35,18 @@ func TestPlacementViewRESTMetadata(t *testing.T) {
 	if _, ok := rest.New().(*workspacev1alpha1.PlacementView); !ok {
 		t.Fatal("expected placement view object")
 	}
+	if _, ok := rest.NewList().(*workspacev1alpha1.PlacementViewList); !ok {
+		t.Fatal("expected placement view list object")
+	}
 }
 
-func TestPlacementViewRESTDoesNotAdvertiseReadableVerbs(t *testing.T) {
-	storage := NewPlacementViewREST()
+func TestPlacementViewRESTExposesReadableDebugSurface(t *testing.T) {
+	storage := NewPlacementViewREST(nil, nil)
 
-	if _, ok := any(storage).(rest.Getter); ok {
-		t.Fatal("placementview storage must not advertise get before read support exists")
+	if _, ok := any(storage).(rest.Getter); !ok {
+		t.Fatal("placementview storage must advertise get when debug support exists")
 	}
-	if _, ok := any(storage).(rest.Lister); ok {
-		t.Fatal("placementview storage must not advertise list before read support exists")
+	if _, ok := any(storage).(rest.Lister); !ok {
+		t.Fatal("placementview storage must advertise list when debug support exists")
 	}
 }

@@ -82,3 +82,41 @@ func TestResolveLiveTargetReturnsNotFoundWhenNoTargets(t *testing.T) {
 		t.Fatalf("expected no-target error, got %v", err)
 	}
 }
+
+func TestResolveLiveTargetHonorsExplicitClusterSelection(t *testing.T) {
+	target, err := ResolveLiveTarget(staticState{
+		targets: []Target{{Cluster: "member-a"}, {Cluster: "member-b"}},
+	}, Request{
+		Resource:    corev1.SchemeGroupVersion.WithResource("pods"),
+		Namespace:   "default",
+		Name:        "demo",
+		Subresource: "logs",
+		Selector:    TargetSelector{Cluster: "member-b"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target.Cluster != "member-b" {
+		t.Fatalf("got %q, want %q", target.Cluster, "member-b")
+	}
+}
+
+func TestInspectLiveTargetsReportsCandidatesWithoutSelecting(t *testing.T) {
+	inspection, err := InspectLiveTargets(staticState{
+		targets: []Target{{Cluster: "member-a"}, {Cluster: "member-b"}},
+	}, Request{
+		Resource:    corev1.SchemeGroupVersion.WithResource("pods"),
+		Namespace:   "default",
+		Name:        "demo",
+		Subresource: "exec",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !inspection.Ambiguous {
+		t.Fatal("expected ambiguous inspection")
+	}
+	if len(inspection.Candidates) != 2 {
+		t.Fatalf("got %d candidates, want 2", len(inspection.Candidates))
+	}
+}

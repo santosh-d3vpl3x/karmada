@@ -204,6 +204,14 @@ func (h *workspaceProxyHandler) ConnectWorkspace(_ context.Context, workspaceNam
 	}), nil
 }
 
+func (h *workspaceProxyHandler) RuntimeState() index.State {
+	return h.runtimeState
+}
+
+func (h *workspaceProxyHandler) LiveResolver() live.Resolver {
+	return h.liveResolver
+}
+
 func (h *workspaceProxyHandler) serveDiscovery(rw http.ResponseWriter, info *workspaceRequestInfo) {
 	switch {
 	case info.Path == "/api":
@@ -284,8 +292,18 @@ func (h *workspaceProxyHandler) serveSubresource(rw http.ResponseWriter, req *ht
 		Namespace:   info.Namespace,
 		Subresource: info.Subresource,
 	})
+	ctx = workspacestorage.WithLiveRequestOptions(ctx, req.URL.Query())
 
 	podREST := workspacestorage.NewPodREST(h.liveResolver, h.liveConnector)
+	if liveInspectRequested(req.URL.Query()) {
+		inspection, err := podREST.Inspect(ctx, info.Name)
+		if err != nil {
+			writeAPIError(rw, err)
+			return
+		}
+		writeJSON(rw, http.StatusOK, inspection)
+		return
+	}
 	handler, err := podREST.Connect(ctx, info.Name, nil, responder)
 	if err != nil {
 		writeAPIError(rw, err)
@@ -648,6 +666,15 @@ func requestVerb(method string, hasName, hasSubresource, isWatch bool) string {
 func watchRequested(query url.Values) bool {
 	watch := strings.ToLower(query.Get("watch"))
 	return watch == "1" || watch == "true"
+}
+
+func liveInspectRequested(query url.Values) bool {
+	switch strings.ToLower(strings.TrimSpace(query.Get("inspect"))) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitPath(p string) []string {

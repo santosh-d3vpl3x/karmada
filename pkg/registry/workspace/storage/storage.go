@@ -20,6 +20,9 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/registry/generic"
 	"k8s.io/apiserver/pkg/registry/rest"
+
+	"github.com/karmada-io/karmada/pkg/workspace/index"
+	"github.com/karmada-io/karmada/pkg/workspace/live"
 )
 
 // Storage bundles the phase-1 root resources served by the workspace API group.
@@ -28,15 +31,26 @@ type Storage struct {
 	PlacementViews rest.Storage
 }
 
+type placementViewDependencies interface {
+	RuntimeState() index.State
+	LiveResolver() live.Resolver
+}
+
 // NewStorage returns the root storages installed for the workspace API group.
 func NewStorage(_ *runtime.Scheme, _ generic.RESTOptionsGetter, proxyHandlers ...WorkspaceProxyHandler) (*Storage, error) {
 	var proxyHandler WorkspaceProxyHandler
+	var placementIndex index.State
+	var placementResolver live.Resolver
 	if len(proxyHandlers) > 0 {
 		proxyHandler = proxyHandlers[0]
+		if deps, ok := proxyHandler.(placementViewDependencies); ok {
+			placementIndex = deps.RuntimeState()
+			placementResolver = deps.LiveResolver()
+		}
 	}
 
 	return &Storage{
 		Workspaces:     NewWorkspaceREST(proxyHandler),
-		PlacementViews: NewPlacementViewREST(),
+		PlacementViews: NewPlacementViewREST(placementIndex, placementResolver),
 	}, nil
 }

@@ -83,6 +83,11 @@ func (r *PodREST) Connect(ctx context.Context, id string, options runtime.Object
 	return r.PodLiveREST.Connect(ctx, id, options, responder)
 }
 
+// Inspect reports the eligible live targets for the requested pod subresource.
+func (r *PodREST) Inspect(ctx context.Context, id string) (live.Inspection, error) {
+	return r.PodLiveREST.Inspect(ctx, id)
+}
+
 // projectedRuntimeIndex is the injectable runtime feed used by projected pod and event storage.
 type projectedRuntimeIndex interface {
 	Snapshot(context.Context) (*index.Snapshot, error)

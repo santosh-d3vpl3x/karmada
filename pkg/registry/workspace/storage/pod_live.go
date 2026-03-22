@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -33,6 +34,13 @@ import (
 )
 
 var podLiveConnectMethods = []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete, http.MethodHead, http.MethodOptions}
+
+type liveRequestOptionsKey struct{}
+
+type liveRequestOptions struct {
+	Inspect       bool
+	TargetCluster string
+}
 
 // LiveConnector proxies a uniquely resolved live request to the selected backing target.
 type LiveConnector interface {
@@ -56,6 +64,21 @@ func NewPodLiveREST(resolver live.Resolver, connector LiveConnector) *PodLiveRES
 		resolver:  resolver,
 		connector: connector,
 	}
+}
+
+// WithLiveRequestOptions stores live-routing query options on the request context.
+func WithLiveRequestOptions(ctx context.Context, query url.Values) context.Context {
+	if len(query) == 0 {
+		return ctx
+	}
+	options := liveRequestOptions{
+		Inspect:       truthy(query.Get("inspect")),
+		TargetCluster: strings.TrimSpace(query.Get("targetCluster")),
+	}
+	if !options.Inspect && options.TargetCluster == "" {
+		return ctx
+	}
+	return context.WithValue(ctx, liveRequestOptionsKey{}, options)
 }
 
 // New returns an empty Pod object.
@@ -98,7 +121,8 @@ func (r *PodLiveREST) Connect(ctx context.Context, id string, options runtime.Ob
 		return nil, NewUnsupportedResourceError(subresource)
 	}
 
-	target, err := r.resolveTarget(info, id)
+	request := r.liveRequest(info, id, liveRequestOptionsFromContext(ctx))
+	target, err := r.resolveTarget(request)
 	if err != nil {
 		return nil, err
 	}
@@ -106,35 +130,73 @@ func (r *PodLiveREST) Connect(ctx context.Context, id string, options runtime.Ob
 	if r.connector == nil {
 		return nil, fmt.Errorf("live connector is not configured")
 	}
-	return r.connector.Connect(ctx, target, live.Request{
-		Resource:    corev1.SchemeGroupVersion.WithResource("pods"),
-		Namespace:   info.Namespace,
-		Name:        id,
-		Subresource: subresource,
-	}, options, responder)
+	return r.connector.Connect(ctx, target, request, options, responder)
 }
 
-func (r *PodLiveREST) resolveTarget(info *genericrequest.RequestInfo, name string) (live.Target, error) {
-	if r.resolver == nil {
-		return live.Target{}, fmt.Errorf("live resolver is not configured")
+// Inspect reports the eligible backing targets without selecting one implicitly.
+func (r *PodLiveREST) Inspect(ctx context.Context, id string) (live.Inspection, error) {
+	info, ok := genericrequest.RequestInfoFrom(ctx)
+	if !ok {
+		return live.Inspection{}, fmt.Errorf("no RequestInfo found in the context")
 	}
 
-	target, err := r.resolver.ResolveLiveTarget(live.Request{
+	subresource := strings.ToLower(info.Subresource)
+	if !support.SupportsSubresource(corev1.SchemeGroupVersion.WithResource("pods"), subresource) {
+		return live.Inspection{}, NewUnsupportedResourceError(subresource)
+	}
+	if r.resolver == nil {
+		return live.Inspection{}, fmt.Errorf("live resolver is not configured")
+	}
+
+	inspection, err := r.resolver.InspectLiveTargets(r.liveRequest(info, id, liveRequestOptionsFromContext(ctx)))
+	if err != nil {
+		return live.Inspection{}, err
+	}
+	return inspection, nil
+}
+
+func (r *PodLiveREST) liveRequest(info *genericrequest.RequestInfo, name string, options liveRequestOptions) live.Request {
+	return live.Request{
 		Resource:    corev1.SchemeGroupVersion.WithResource("pods"),
 		Namespace:   info.Namespace,
 		Name:        name,
 		Subresource: strings.ToLower(info.Subresource),
-	})
+		Selector: live.TargetSelector{
+			Cluster: options.TargetCluster,
+		},
+	}
+}
+
+func (r *PodLiveREST) resolveTarget(req live.Request) (live.Target, error) {
+	if r.resolver == nil {
+		return live.Target{}, fmt.Errorf("live resolver is not configured")
+	}
+
+	target, err := r.resolver.ResolveLiveTarget(req)
 	if err == nil {
 		return target, nil
 	}
 
 	switch {
 	case errors.Is(err, live.ErrNoLiveTarget):
-		return live.Target{}, NewNoEligibleLiveTargetError("pods", name)
+		return live.Target{}, NewNoEligibleLiveTargetError("pods", req.Name)
 	case errors.Is(err, live.ErrAmbiguousLiveTarget):
-		return live.Target{}, NewAmbiguousTargetError("pods", name)
+		return live.Target{}, NewAmbiguousTargetError("pods", req.Name)
 	default:
 		return live.Target{}, err
+	}
+}
+
+func liveRequestOptionsFromContext(ctx context.Context) liveRequestOptions {
+	options, _ := ctx.Value(liveRequestOptionsKey{}).(liveRequestOptions)
+	return options
+}
+
+func truthy(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "t", "true", "y", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }

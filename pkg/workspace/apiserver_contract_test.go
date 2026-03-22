@@ -427,3 +427,60 @@ func containsResource(resources []metav1.APIResource, name string) bool {
 	}
 	return false
 }
+
+func TestWorkspacePodLiveSelectionReturnsChosenTarget(t *testing.T) {
+	state := defaultRuntimeState()
+	state.targets = []live.Target{{Cluster: "member-a", Namespace: "default", Name: "demo"}, {Cluster: "member-b", Namespace: "default", Name: "demo"}}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: state})
+
+	resp := doRequest(t, server, http.MethodGet, workspaceProxyPath("team-a", "/api/v1/namespaces/default/pods/demo/logs?targetCluster=member-b"), nil, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if strings.TrimSpace(string(body)) != "member-b/logs" {
+		t.Fatalf("got body %q", strings.TrimSpace(string(body)))
+	}
+}
+
+func TestWorkspacePodLiveInspectionReportsCandidates(t *testing.T) {
+	state := defaultRuntimeState()
+	state.targets = []live.Target{{Cluster: "member-a", Namespace: "default", Name: "demo"}, {Cluster: "member-b", Namespace: "default", Name: "demo"}}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: state})
+
+	resp := doRequest(t, server, http.MethodGet, workspaceProxyPath("team-a", "/api/v1/namespaces/default/pods/demo/logs?inspect=1"), nil, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+	inspection := live.Inspection{}
+	if err := json.NewDecoder(resp.Body).Decode(&inspection); err != nil {
+		t.Fatal(err)
+	}
+	if len(inspection.Candidates) != 2 {
+		t.Fatalf("got %d candidates", len(inspection.Candidates))
+	}
+}
+
+func TestWorkspacePlacementViewReturnsDebugState(t *testing.T) {
+	state := defaultRuntimeState()
+	state.targets = []live.Target{{Cluster: "member-a", Namespace: "default", Name: "demo"}, {Cluster: "member-b", Namespace: "default", Name: "demo"}}
+	server := newTestWorkspaceServer(t, testWorkspaceServerOptions{runtimeState: state})
+
+	resp := doRequest(t, server, http.MethodGet, "/apis/"+workspacev1alpha1.GroupName+"/"+workspacev1alpha1.GroupVersion.Version+"/placementviews/default.demo", nil, "")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("got %d", resp.StatusCode)
+	}
+	view := workspacev1alpha1.PlacementView{}
+	if err := json.NewDecoder(resp.Body).Decode(&view); err != nil {
+		t.Fatal(err)
+	}
+	if !view.Status.AmbiguousLiveTarget {
+		t.Fatal("expected ambiguous live target")
+	}
+	if len(view.Status.EligibleClusters) != 2 {
+		t.Fatalf("got %d eligible clusters", len(view.Status.EligibleClusters))
+	}
+}
