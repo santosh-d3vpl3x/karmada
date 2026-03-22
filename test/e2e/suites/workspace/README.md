@@ -14,7 +14,7 @@ The automated suite covers the currently implemented workspace surface on this b
 - workspace kubeconfig generation through `karmadactl workspace kubeconfig`
 - `kubectl api-resources` over the supported workspace surface
 - namespace creation and visibility through the workspace API
-- CRUD-oriented flows for the writable desired-state resources
+- CRUD-oriented flows for the writable desired-state resources, including `serviceaccounts`
 - `kubectl get pods`
 - `kubectl get events`
 - `kubectl get -w` on a supported resource

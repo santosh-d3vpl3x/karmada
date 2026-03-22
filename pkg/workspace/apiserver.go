@@ -686,6 +686,8 @@ func kindFor(gvr schema.GroupVersionResource) string {
 		return "ConfigMap"
 	case corev1.SchemeGroupVersion.WithResource("secrets"):
 		return "Secret"
+	case corev1.SchemeGroupVersion.WithResource("serviceaccounts"):
+		return "ServiceAccount"
 	case corev1.SchemeGroupVersion.WithResource("services"):
 		return "Service"
 	case corev1.SchemeGroupVersion.WithResource("pods"):

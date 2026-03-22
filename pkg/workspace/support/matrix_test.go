@@ -27,6 +27,7 @@ var deploymentsGVR = appsv1.SchemeGroupVersion.WithResource("deployments")
 var eventsGVR = corev1.SchemeGroupVersion.WithResource("events")
 var namespacesGVR = corev1.SchemeGroupVersion.WithResource("namespaces")
 var podsGVR = corev1.SchemeGroupVersion.WithResource("pods")
+var serviceAccountsGVR = corev1.SchemeGroupVersion.WithResource("serviceaccounts")
 
 func TestPhase1Matrix(t *testing.T) {
 	if !Supports(deploymentsGVR, "create") {
@@ -71,5 +72,24 @@ func TestNamespaceCapabilityIsWritable(t *testing.T) {
 	}
 	if !Supports(namespacesGVR, "create") {
 		t.Fatal("expected namespace create support")
+	}
+}
+
+func TestServiceAccountCapabilityIsWritable(t *testing.T) {
+	capability, ok := CapabilityFor(serviceAccountsGVR)
+	if !ok {
+		t.Fatal("expected serviceaccount capability")
+	}
+	if !capability.Read {
+		t.Fatal("expected serviceaccount read support")
+	}
+	if !capability.Watch {
+		t.Fatal("expected serviceaccount watch support")
+	}
+	if !capability.Write {
+		t.Fatal("expected serviceaccount write support")
+	}
+	if !Supports(serviceAccountsGVR, "create") {
+		t.Fatal("expected serviceaccount create support")
 	}
 }

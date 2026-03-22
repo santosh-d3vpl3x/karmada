@@ -89,6 +89,7 @@ func supportedWorkspaceAPIResources() []string {
 		"pods/logs",
 		"pods/portforward",
 		"secrets",
+		"serviceaccounts",
 		"services",
 		"statefulsets.apps",
 	}
@@ -193,6 +194,12 @@ metadata:
 type: Opaque
 stringData:
   token: initial
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: workspace-builder
+  namespace: %s
 ---
 apiVersion: v1
 kind: Service
@@ -324,7 +331,7 @@ spec:
           - name: app
             image: busybox:1.36.0
             command: ["sh", "-c", "echo workspace-cron"]
-`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
+`, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace, namespace)
 }
 
 func workspaceWritableUpdateManifest(namespace string) string {
@@ -494,6 +501,7 @@ var _ = ginkgo.Describe("Workspace API", ginkgo.Ordered, func() {
 		for _, args := range [][]string{
 			{"get", "configmap", "workspace-config", "-n", harness.Namespace, "-o", "jsonpath={.data.mode}"},
 			{"get", "secret", "workspace-secret", "-n", harness.Namespace, "-o", "jsonpath={.data.token}"},
+			{"get", "serviceaccount", "workspace-builder", "-n", harness.Namespace, "-o", "name"},
 			{"get", "service", "workspace-service", "-n", harness.Namespace, "-o", "name"},
 			{"get", "deployment", "workspace-demo", "-n", harness.Namespace, "-o", "name"},
 			{"get", "statefulset", "workspace-stateful", "-n", harness.Namespace, "-o", "name"},
